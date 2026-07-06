@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Livestock — MyFarm</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+
+<style>
+/* ══ Livestock-page-only styles ══════════════════════════════ */
+.herd-grid {
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
+    gap:14px;
+}
+.herd-card {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:16px; padding:18px 20px;
+    transition:transform .2s, border-color .2s; cursor:pointer;
+}
+.herd-card:hover { transform:translateY(-2px); border-color:rgba(57,217,138,.3); }
+.herd-card-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.herd-icon-box {
+    width:30px; height:30px; border-radius:9px; background:var(--accent-dim);
+    display:flex; align-items:center; justify-content:center;
+}
+.herd-icon-box svg { width:15px; height:15px; stroke:var(--accent); fill:none;
+                      stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.herd-pct { font-size:.72rem; color:var(--muted); font-weight:600; }
+.herd-name  { font-size:.92rem; font-weight:700; margin-bottom:4px; }
+.herd-count { font-size:1.4rem; font-weight:800; }
+.herd-bar-track { height:5px; border-radius:4px; background:var(--input); margin-top:10px; overflow:hidden; }
+.herd-bar-fill  { height:100%; background:linear-gradient(90deg,var(--accent),#22b060); border-radius:4px;
+                   width:0; transition:width 1s cubic-bezier(.16,1,.3,1); }
+
+.empty-state {
+    text-align:center; padding:48px 20px; color:var(--muted);
+}
+.empty-state svg { width:42px; height:42px; stroke:var(--muted); fill:none;
+                    stroke-width:1.5; margin-bottom:12px; opacity:.6; }
+.empty-state p { font-size:.85rem; }
+
+/* ══ New Herd modal ══ */
+/* Both "+ New Herd" and "+ Add Breed" now use the shared .panel-link
+   style (muted grey, turns accent green on hover) for consistency. */
+
+.modal-overlay {
+    position:fixed; inset:0; background:rgba(0,0,0,.6);
+    display:none; align-items:center; justify-content:center; z-index:400;
+}
+.modal-overlay.open { display:flex; }
+.modal-box {
+    background:var(--surface); border:1px solid var(--border); border-radius:18px;
+    padding:26px; width:380px; max-width:90vw;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+.modal-title { font-size:1.05rem; font-weight:700; margin-bottom:18px; }
+.modal-field { margin-bottom:16px; }
+.modal-field label { display:block; margin-bottom:6px; font-size:.82rem; font-weight:600; }
+.modal-field input {
+    width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:9px;
+    background:var(--input); color:var(--text); font-size:.88rem; font-family:'Inter',sans-serif;
+}
+.modal-field input:focus { outline:none; border-color:var(--accent); }
+.modal-field input.invalid { border-color:var(--danger); }
+.modal-hint { font-size:.72rem; color:var(--muted); margin-top:5px; }
+.modal-actions { display:flex; gap:10px; margin-top:6px; }
+.modal-btn { flex:1; padding:11px; border:none; border-radius:9px; cursor:pointer;
+             font-size:.86rem; font-weight:700; font-family:'Inter',sans-serif; transition:.2s; }
+.modal-btn.primary { background:linear-gradient(135deg,var(--accent),#22b060); color:#06130a; }
+.modal-btn.primary:hover { transform:translateY(-1px); }
+.modal-btn.primary:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+.modal-btn.secondary { background:var(--input); color:var(--text); border:1px solid var(--border); }
+.modal-btn.secondary:hover { border-color:var(--muted); }
+.modal-message { margin-top:12px; font-size:.82rem; font-weight:600; display:none; }
+.modal-message.error { display:block; color:var(--danger); }
+.modal-message.success { display:block; color:var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="dashboard-layout">
+<div id="sidebar-mount"></div>
+
+    <div class="main">
+        <div id="topbar-mount"></div>
+
+        <div class="content">
+
+            <div class="banner error" id="api-error">
+                ⚠ Could not reach the server — showing zeroes. Is app.py running?
+            </div>
+
+            <!-- ── Overview stat cards ──────────────────────── -->
+            <div class="stats-grid">
+
+                <div class="stat-card">
+                    <div class="stat-icon-box">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M3 8h18M3 8l2-4h14l2 4M3 8l-1 9h20l-1-9"/>
+                            <circle cx="9" cy="14" r="1.5"/>
+                            <circle cx="15" cy="14" r="1.5"/>
+                        </svg>
+                    </div>
+                    <div class="stat-label">Total Livestock</div>
+                    <div class="stat-value" id="cnt-livestock">—</div>
+                    <div class="stat-change" id="chg-livestock">Fetching…</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon-box">
+                        <svg viewBox="0 0 24 24">
+                            <circle cx="8" cy="7" r="3"/>
+                            <path d="M2 21c0-3.31 2.69-6 6-6"/>
+                            <circle cx="16" cy="7" r="3"/>
+                            <path d="M22 21c0-3.31-2.69-6-6-6"/>
+                            <path d="M11 21c0-3.31.895-6 3-6s3 2.69 3 6"/>
+                        </svg>
+                    </div>
+                    <div class="stat-label">Total Herds</div>
+                    <div class="stat-value" id="cnt-herds">—</div>
+                    <div class="stat-change" id="chg-herds">Fetching…</div>
+                </div>
+
+            </div>
+
+            <!-- ── Herd summary ─────────────────────────────── -->
+            <div class="panel">
+                <div class="panel-head">
+                    <span class="panel-title">Herds</span>
+                    <div style="display:flex; gap:14px; align-items:center;">
+                        <span class="panel-link" id="new-herd-btn" onclick="openHerdModal()">+ New Herd</span>
+                        <span class="panel-link" onclick="window.location.href='livestock_list.html'">View all animals →</span>
+                    </div>
+                </div>
+                <div class="herd-grid" id="herd-grid">
+                    <!-- Skeleton placeholders while loading -->
+                    <div class="herd-card">
+                        <div class="skeleton" style="height:30px;width:30px;border-radius:9px;margin-bottom:10px;"></div>
+                        <div class="skeleton" style="height:14px;width:70%;margin-bottom:8px;"></div>
+                        <div class="skeleton" style="height:20px;width:40%;"></div>
+                    </div>
+                    <div class="herd-card">
+                        <div class="skeleton" style="height:30px;width:30px;border-radius:9px;margin-bottom:10px;"></div>
+                        <div class="skeleton" style="height:14px;width:65%;margin-bottom:8px;"></div>
+                        <div class="skeleton" style="height:20px;width:35%;"></div>
+                    </div>
+                    <div class="herd-card">
+                        <div class="skeleton" style="height:30px;width:30px;border-radius:9px;margin-bottom:10px;"></div>
+                        <div class="skeleton" style="height:14px;width:75%;margin-bottom:8px;"></div>
+                        <div class="skeleton" style="height:20px;width:45%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Breed summary ────────────────────────────── -->
+            <div class="panel">
+                <div class="panel-head">
+                    <span class="panel-title">Breeds</span>
+                    <div style="display:flex; gap:14px; align-items:center;">
+                        <span class="panel-link" id="new-breed-btn" onclick="openBreedModal()">+ Add Breed</span>
+                        <span class="panel-link" onclick="window.location.href='livestock_list.html'">View all animals →</span>
+                    </div>
+                </div>
+                <div class="herd-grid" id="breed-grid">
+                    <!-- Skeleton placeholders while loading -->
+                    <div class="herd-card">
+                        <div class="skeleton" style="height:30px;width:30px;border-radius:9px;margin-bottom:10px;"></div>
+                        <div class="skeleton" style="height:14px;width:70%;margin-bottom:8px;"></div>
+                        <div class="skeleton" style="height:20px;width:40%;"></div>
+                    </div>
+                    <div class="herd-card">
+                        <div class="skeleton" style="height:30px;width:30px;border-radius:9px;margin-bottom:10px;"></div>
+                        <div class="skeleton" style="height:14px;width:65%;margin-bottom:8px;"></div>
+                        <div class="skeleton" style="height:20px;width:35%;"></div>
+                    </div>
+                    <div class="herd-card">
+                        <div class="skeleton" style="height:30px;width:30px;border-radius:9px;margin-bottom:10px;"></div>
+                        <div class="skeleton" style="height:14px;width:75%;margin-bottom:8px;"></div>
+                        <div class="skeleton" style="height:20px;width:45%;"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- New Herd modal -->
+<div class="modal-overlay" id="herd-modal">
+    <div class="modal-box">
+        <div class="modal-title">Create New Herd</div>
+        <form id="herdForm">
+            <div class="modal-field">
+                <label for="herd_name">Herd Name</label>
+                <input type="text" id="herd_name" placeholder="e.g. Herd #6 — Dairy" required>
+            </div>
+            <div class="modal-field">
+                <label for="herd_head_count">Starting Head Count <span style="color:var(--muted);font-weight:400;">— optional</span></label>
+                <input type="number" id="herd_head_count" min="0" placeholder="0">
+                <div class="modal-hint">You can also add animals individually later.</div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn secondary" onclick="closeHerdModal()">Cancel</button>
+                <button type="submit" class="modal-btn primary" id="herd-submit-btn">Create Herd</button>
+            </div>
+            <div class="modal-message" id="herd-modal-message"></div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Breed modal -->
+<div class="modal-overlay" id="breed-modal">
+    <div class="modal-box">
+        <div class="modal-title">Add a New Breed</div>
+        <form id="breedForm">
+            <div class="modal-field">
+                <label for="new_breed_name">Breed Name</label>
+                <input type="text" id="new_breed_name" placeholder="e.g. Angus" required>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn secondary" onclick="closeBreedModal()">Cancel</button>
+                <button type="submit" class="modal-btn primary" id="breed-submit-btn">Add Breed</button>
+            </div>
+            <div class="modal-message" id="breed-modal-message"></div>
+        </form>
+    </div>
+</div>
+
+<!-- Floating "+" button — opens add_livestock.html -->
+<button class="fab" title="Add livestock" onclick="window.location.href='add_livestock.html'">+</button>
+
+<script src="shared.js"></script>
+<script>
+initLayout('livestock', {
+    title:    'Livestock',
+    subtitle: 'Overview of herds and registered animals on your farm.',
+});
+
+var HERD_ICON = '<svg viewBox="0 0 24 24"><circle cx="8" cy="7" r="3"/><path d="M2 21c0-3.31 2.69-6 6-6"/><circle cx="16" cy="7" r="3"/><path d="M22 21c0-3.31-2.69-6-6-6"/><path d="M11 21c0-3.31.895-6 3-6s3 2.69 3 6"/></svg>';
+var BREED_ICON = '<svg viewBox="0 0 24 24"><path d="M20.59 13.41L11 3.83V3H4v7h.83l9.58 9.58a2 2 0 0 0 2.83 0l3.34-3.34a2 2 0 0 0 .01-2.83z"/><circle cx="6.5" cy="6.5" r="1.5"/></svg>';
+
+function renderHerds(herds) {
+    var grid = document.getElementById('herd-grid');
+
+    if (!herds || herds.length === 0) {
+        grid.innerHTML =
+            '<div class="empty-state" style="grid-column:1/-1;">' +
+            '  <svg viewBox="0 0 24 24"><circle cx="8" cy="7" r="3"/><path d="M2 21c0-3.31 2.69-6 6-6"/><circle cx="16" cy="7" r="3"/><path d="M22 21c0-3.31-2.69-6-6-6"/><path d="M11 21c0-3.31.895-6 3-6s3 2.69 3 6"/></svg>' +
+            '  <p>No herds have been created yet.</p>' +
+            '</div>';
+        return;
+    }
+
+    grid.innerHTML = herds.map(function(h) {
+        return [
+            '<div class="herd-card" onclick="window.location.href=\'livestock_list.html?herd=' + h.id + '\'">',
+            '  <div class="herd-card-top">',
+            '    <div class="herd-icon-box">', HERD_ICON, '</div>',
+            '    <span class="herd-pct">', h.pct, '%</span>',
+            '  </div>',
+            '  <div class="herd-name">', escHtml(h.herd_name), '</div>',
+            '  <div class="herd-count">', h.head_count.toLocaleString(), '</div>',
+            '  <div class="herd-bar-track"><div class="herd-bar-fill" data-pct="', h.pct, '"></div></div>',
+            '</div>',
+        ].join('');
+    }).join('');
+
+    /* Animate bars in after paint */
+    requestAnimationFrame(function() {
+        document.querySelectorAll('#herd-grid .herd-bar-fill').forEach(function(bar) {
+            bar.style.width = bar.dataset.pct + '%';
+        });
+    });
+}
+
+function renderBreeds(breeds) {
+    var grid = document.getElementById('breed-grid');
+
+    if (!breeds || breeds.length === 0) {
+        grid.innerHTML =
+            '<div class="empty-state" style="grid-column:1/-1;">' +
+            '  <svg viewBox="0 0 24 24"><path d="M20.59 13.41L11 3.83V3H4v7h.83l9.58 9.58a2 2 0 0 0 2.83 0l3.34-3.34a2 2 0 0 0 .01-2.83z"/><circle cx="6.5" cy="6.5" r="1.5"/></svg>' +
+            '  <p>No breeds have been added yet.</p>' +
+            '</div>';
+        return;
+    }
+
+    grid.innerHTML = breeds.map(function(b) {
+        return [
+            '<div class="herd-card" onclick="window.location.href=\'livestock_list.html?breed=' + encodeURIComponent(b.breed_name) + '\'">',
+            '  <div class="herd-card-top">',
+            '    <div class="herd-icon-box">', BREED_ICON, '</div>',
+            '    <span class="herd-pct">', b.pct, '%</span>',
+            '  </div>',
+            '  <div class="herd-name">', escHtml(b.breed_name), '</div>',
+            '  <div class="herd-count">', b.animal_count.toLocaleString(), '</div>',
+            '  <div class="herd-bar-track"><div class="herd-bar-fill" data-pct="', b.pct, '"></div></div>',
+            '</div>',
+        ].join('');
+    }).join('');
+
+    requestAnimationFrame(function() {
+        document.querySelectorAll('#breed-grid .herd-bar-fill').forEach(function(bar) {
+            bar.style.width = bar.dataset.pct + '%';
+        });
+    });
+}
+
+async function loadLivestockOverview() {
+    var enc = encodeURIComponent(FARM_NAME);
+    try {
+        var res    = await fetch('/api/herds?farm_name=' + enc);
+        var data   = await res.json();
+        var herds  = data.herds || [];
+
+        countUp('cnt-livestock', data.total_animals || 0, 1200);
+        var livestockChg = document.getElementById('chg-livestock');
+        livestockChg.textContent = (data.total_animals || 0) === 0
+            ? 'No animals recorded yet' : 'across all herds';
+
+        countUp('cnt-herds', data.total_herds || 0, 900);
+        document.getElementById('chg-herds').textContent =
+            (data.total_herds || 0) === 0 ? 'No herds recorded yet'
+            : data.total_herds + ' active herd' + (data.total_herds !== 1 ? 's' : '');
+
+        renderHerds(herds);
+
+    } catch (err) {
+        document.getElementById('api-error').style.display = 'block';
+        console.warn('API unreachable:', err);
+        countUp('cnt-livestock', 0, 600);
+        countUp('cnt-herds', 0, 600);
+        document.getElementById('chg-livestock').textContent = 'No animals recorded yet';
+        document.getElementById('chg-herds').textContent     = 'No herds recorded yet';
+        renderHerds([]);
+    }
+}
+
+async function loadBreedsOverview() {
+    var enc = encodeURIComponent(FARM_NAME);
+    try {
+        var res    = await fetch('/api/breeds?farm_name=' + enc);
+        var data   = await res.json();
+        renderBreeds(data.breeds || []);
+    } catch (err) {
+        console.warn('Could not load breeds:', err);
+        renderBreeds([]);
+    }
+}
+
+/* ══ New Herd modal ══════════════════════════════════════════ */
+function openHerdModal() {
+    document.getElementById('herd-modal').classList.add('open');
+    document.getElementById('herd_name').value = '';
+    document.getElementById('herd_head_count').value = '';
+    document.getElementById('herd-modal-message').style.display = 'none';
+    document.getElementById('herd_name').classList.remove('invalid');
+    document.getElementById('herd_name').focus();
+}
+function closeHerdModal() {
+    document.getElementById('herd-modal').classList.remove('open');
+}
+/* Close modal on backdrop click */
+document.getElementById('herd-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeHerdModal();
+});
+
+document.getElementById('herdForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    var name  = document.getElementById('herd_name').value.trim();
+    var count = document.getElementById('herd_head_count').value;
+    var msg   = document.getElementById('herd-modal-message');
+    var btn   = document.getElementById('herd-submit-btn');
+
+    document.getElementById('herd_name').classList.remove('invalid');
+    msg.style.display = 'none';
+
+    if (!name) {
+        msg.textContent = 'Herd name is required.';
+        msg.className = 'modal-message error';
+        document.getElementById('herd_name').classList.add('invalid');
+        return;
+    }
+
+    btn.disabled    = true;
+    btn.textContent = 'Creating…';
+
+    try {
+        var res = await fetch('/api/herds', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                farm_name:  FARM_NAME,
+                herd_name:  name,
+                head_count: count ? parseInt(count) : 0,
+            }),
+        });
+        var data = await res.json();
+
+        if (data.success) {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message success';
+            setTimeout(function() {
+                closeHerdModal();
+                loadLivestockOverview();
+            }, 700);
+        } else {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message error';
+            btn.disabled    = false;
+            btn.textContent = 'Create Herd';
+        }
+    } catch (err) {
+        msg.textContent = 'Could not reach the server. Is it running?';
+        msg.className   = 'modal-message error';
+        btn.disabled    = false;
+        btn.textContent = 'Create Herd';
+    }
+});
+
+/* ══ Add Breed modal ═════════════════════════════════════════ */
+function openBreedModal() {
+    document.getElementById('breed-modal').classList.add('open');
+    document.getElementById('new_breed_name').value = '';
+    document.getElementById('breed-modal-message').style.display = 'none';
+    document.getElementById('new_breed_name').classList.remove('invalid');
+    document.getElementById('new_breed_name').focus();
+}
+function closeBreedModal() {
+    document.getElementById('breed-modal').classList.remove('open');
+}
+document.getElementById('breed-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeBreedModal();
+});
+
+document.getElementById('breedForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    var name = document.getElementById('new_breed_name').value.trim();
+    var msg  = document.getElementById('breed-modal-message');
+    var btn  = document.getElementById('breed-submit-btn');
+
+    document.getElementById('new_breed_name').classList.remove('invalid');
+    msg.style.display = 'none';
+
+    if (!name) {
+        msg.textContent = 'Breed name is required.';
+        msg.className = 'modal-message error';
+        document.getElementById('new_breed_name').classList.add('invalid');
+        return;
+    }
+
+    btn.disabled    = true;
+    btn.textContent = 'Adding…';
+
+    try {
+        var res = await fetch('/api/breeds', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ farm_name: FARM_NAME, breed_name: name }),
+        });
+        var data = await res.json();
+
+        if (data.success) {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message success';
+            setTimeout(function() {
+                closeBreedModal();
+                loadBreedsOverview();
+            }, 700);
+        } else {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message error';
+            btn.disabled    = false;
+            btn.textContent = 'Add Breed';
+        }
+    } catch (err) {
+        msg.textContent = 'Could not reach the server. Is it running?';
+        msg.className   = 'modal-message error';
+        btn.disabled    = false;
+        btn.textContent = 'Add Breed';
+    }
+});
+
+loadLivestockOverview();
+loadBreedsOverview();
+</script>
+
+</body>
+</html>

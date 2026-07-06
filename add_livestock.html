@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Add Livestock — MyFarm</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+
+<style>
+/* ══ Add-page-only styles ══════════════════════════════════════ */
+.back-link {
+    display:inline-flex; align-items:center; gap:6px;
+    color:var(--muted); font-size:.82rem; font-weight:500;
+    cursor:pointer; margin-bottom:2px; width:fit-content;
+}
+.back-link:hover { color:var(--accent); }
+.back-link svg { width:14px; height:14px; stroke:currentColor; fill:none;
+                  stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+
+.form-wrap { max-width:560px; margin:0 auto; width:100%; }
+
+.field-group { margin-bottom:18px; }
+.field-group label {
+    display:block; margin-bottom:7px; font-size:.82rem; font-weight:600; color:var(--text);
+}
+.field-hint { font-size:.72rem; color:var(--muted); margin-top:5px; }
+.field-group input, .field-group select, .field-group textarea {
+    width:100%; padding:11px 13px; border:1.5px solid var(--border); border-radius:9px;
+    background:var(--input); color:var(--text); font-size:.9rem; font-family:'Inter',sans-serif;
+}
+.field-group input:focus, .field-group select:focus, .field-group textarea:focus {
+    outline:none; border-color:var(--accent);
+}
+.field-group input.invalid, .field-group select.invalid { border-color:var(--danger); }
+.field-group textarea { resize:vertical; min-height:80px; }
+
+#add-breed-link {
+    float:right; color:var(--accent); font-weight:600; cursor:pointer;
+    font-size:.78rem; text-transform:none; letter-spacing:0;
+}
+#add-breed-link:hover { text-decoration:underline; }
+
+/* ══ Add Breed modal (mirrors the New Herd modal on livestock.html) ══ */
+.modal-overlay {
+    position:fixed; inset:0; background:rgba(0,0,0,.6);
+    display:none; align-items:center; justify-content:center; z-index:400;
+}
+.modal-overlay.open { display:flex; }
+.modal-box {
+    background:var(--surface); border:1px solid var(--border); border-radius:18px;
+    padding:26px; width:380px; max-width:90vw;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+.modal-title { font-size:1.05rem; font-weight:700; margin-bottom:18px; }
+.modal-field { margin-bottom:16px; }
+.modal-field label { display:block; margin-bottom:6px; font-size:.82rem; font-weight:600; }
+.modal-field input {
+    width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:9px;
+    background:var(--input); color:var(--text); font-size:.88rem; font-family:'Inter',sans-serif;
+}
+.modal-field input:focus { outline:none; border-color:var(--accent); }
+.modal-field input.invalid { border-color:var(--danger); }
+.modal-actions { display:flex; gap:10px; margin-top:6px; }
+.modal-btn { flex:1; padding:11px; border:none; border-radius:9px; cursor:pointer;
+             font-size:.86rem; font-weight:700; font-family:'Inter',sans-serif; transition:.2s; }
+.modal-btn.primary { background:linear-gradient(135deg,var(--accent),#22b060); color:#06130a; }
+.modal-btn.primary:hover { transform:translateY(-1px); }
+.modal-btn.primary:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+.modal-btn.secondary { background:var(--input); color:var(--text); border:1px solid var(--border); }
+.modal-btn.secondary:hover { border-color:var(--muted); }
+.modal-message { margin-top:12px; font-size:.82rem; font-weight:600; display:none; }
+.modal-message.error { display:block; color:var(--danger); }
+.modal-message.success { display:block; color:var(--accent); }
+
+.gender-toggle { display:flex; gap:10px; }
+.gender-opt {
+    flex:1; text-align:center; padding:12px; border:1.5px solid var(--border);
+    border-radius:9px; cursor:pointer; font-weight:600; font-size:.88rem;
+    color:var(--muted); transition:.2s; background:var(--input);
+}
+.gender-opt.selected.Male   { border-color:var(--blue); color:var(--blue); background:var(--blue-dim); }
+.gender-opt.selected.Female { border-color:#f472b6; color:#f472b6; background:rgba(244,114,182,.12); }
+
+.row-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+
+.submit-row { display:flex; gap:10px; margin-top:6px; }
+.btn {
+    flex:1; padding:13px; border:none; border-radius:10px; cursor:pointer;
+    font-size:.9rem; font-weight:700; transition:.2s; font-family:'Inter',sans-serif;
+}
+.btn-primary { background:linear-gradient(135deg,var(--accent),#22b060); color:#06130a; }
+.btn-primary:hover { transform:translateY(-1px); box-shadow:0 6px 20px var(--accent-glow); }
+.btn-primary:disabled { opacity:.6; cursor:not-allowed; transform:none; box-shadow:none; }
+.btn-secondary { background:var(--input); color:var(--text); border:1px solid var(--border); }
+.btn-secondary:hover { border-color:var(--muted); }
+
+.form-message {
+    margin-top:14px; padding:11px 14px; border-radius:9px; font-size:.85rem;
+    font-weight:600; display:none;
+}
+.form-message.success { display:block; background:var(--accent-dim); color:var(--accent); border:1px solid rgba(57,217,138,.3); }
+.form-message.error   { display:block; background:rgba(255,107,107,.1); color:var(--danger); border:1px solid rgba(255,107,107,.3); }
+</style>
+</head>
+<body>
+
+<div class="dashboard-layout">
+<div id="sidebar-mount"></div>
+
+    <div class="main">
+        <div id="topbar-mount"></div>
+
+        <div class="content">
+
+            <span class="back-link" onclick="window.location.href='livestock.html'">
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+                Back to Livestock
+            </span>
+
+            <div class="form-wrap">
+                <div class="panel">
+
+                    <div class="panel-head">
+                        <span class="panel-title">Add New Animal</span>
+                    </div>
+
+                    <form id="addForm">
+
+                        <div class="field-group">
+                            <label for="tag_number">Tag Number</label>
+                            <input type="text" id="tag_number" placeholder="e.g. A-1042" required>
+                            <div class="field-hint">Must be unique across your farm.</div>
+                        </div>
+
+                        <div class="field-group">
+                            <label>Gender</label>
+                            <input type="hidden" id="gender" value="">
+                            <div class="gender-toggle">
+                                <div class="gender-opt Male"   data-gender="Male"   onclick="selectGender('Male')">Male</div>
+                                <div class="gender-opt Female" data-gender="Female" onclick="selectGender('Female')">Female</div>
+                            </div>
+                        </div>
+
+                        <div class="field-group">
+                            <label for="breed">
+                                Breed <span style="color:var(--muted);font-weight:400;">— optional</span>
+                                <span id="add-breed-link" onclick="openBreedModal()">+ Add Breed</span>
+                            </label>
+                            <select id="breed">
+                                <option value="">— None —</option>
+                            </select>
+                        </div>
+
+                        <div class="row-2">
+                            <div class="field-group">
+                                <label for="date_of_birth">Date of Birth</label>
+                                <input type="date" id="date_of_birth" required>
+                                <div class="field-hint">Defaults to today — change if known.</div>
+                            </div>
+                            <div class="field-group">
+                                <label for="weight">Weight (lb) <span style="color:var(--muted);font-weight:400;">— optional</span></label>
+                                <input type="number" id="weight" min="0" step="0.1" placeholder="e.g. 650">
+                            </div>
+                        </div>
+
+                        <div class="field-group">
+                            <label for="herd_id">Herd</label>
+                            <select id="herd_id">
+                                <option value="">— Unassigned —</option>
+                            </select>
+                        </div>
+
+                        <div class="field-group">
+                            <label for="notes">Notes <span style="color:var(--muted);font-weight:400;">— optional</span></label>
+                            <textarea id="notes" placeholder="Any additional details about this animal…"></textarea>
+                        </div>
+
+                        <div class="submit-row">
+                            <button type="button" class="btn btn-secondary" onclick="window.location.href='livestock.html'">Cancel</button>
+                            <button type="submit" class="btn btn-primary" id="submitBtn">Add Animal</button>
+                        </div>
+
+                        <div class="form-message" id="form-message"></div>
+
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Add Breed modal -->
+<div class="modal-overlay" id="breed-modal">
+    <div class="modal-box">
+        <div class="modal-title">Add a New Breed</div>
+        <form id="breedForm">
+            <div class="modal-field">
+                <label for="new_breed_name">Breed Name</label>
+                <input type="text" id="new_breed_name" placeholder="e.g. Angus" required>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn secondary" onclick="closeBreedModal()">Cancel</button>
+                <button type="submit" class="modal-btn primary" id="breed-submit-btn">Add Breed</button>
+            </div>
+            <div class="modal-message" id="breed-modal-message"></div>
+        </form>
+    </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+initLayout('livestock', {
+    title:    'Add Livestock',
+    subtitle: 'Register a new animal to your farm.',
+});
+
+/* Default date of birth to today, editable */
+document.getElementById('date_of_birth').value = new Date().toISOString().split('T')[0];
+
+function selectGender(g) {
+    document.getElementById('gender').value = g;
+    document.querySelectorAll('.gender-opt').forEach(function(el) {
+        el.classList.toggle('selected', el.dataset.gender === g);
+    });
+}
+
+/* Load herd options for the dropdown */
+(async function loadHerds() {
+    try {
+        var res  = await fetch('/api/herds?farm_name=' + encodeURIComponent(FARM_NAME));
+        var data = await res.json();
+        var sel  = document.getElementById('herd_id');
+        (data.herds || []).forEach(function(h) {
+            var opt = document.createElement('option');
+            opt.value = h.id;
+            opt.textContent = h.herd_name;
+            sel.appendChild(opt);
+        });
+    } catch (err) {
+        console.warn('Could not load herds:', err);
+    }
+})();
+
+/* Load breed options for the dropdown (each farm builds its own list) */
+async function loadBreeds(selectValue) {
+    try {
+        var res  = await fetch('/api/breeds?farm_name=' + encodeURIComponent(FARM_NAME));
+        var data = await res.json();
+        var sel  = document.getElementById('breed');
+        sel.innerHTML = '<option value="">— None —</option>';
+        (data.breeds || []).forEach(function(b) {
+            var opt = document.createElement('option');
+            opt.value = b.breed_name;
+            opt.textContent = b.breed_name;
+            sel.appendChild(opt);
+        });
+        if (selectValue) sel.value = selectValue;
+    } catch (err) {
+        console.warn('Could not load breeds:', err);
+    }
+}
+loadBreeds();
+
+/* ══ Add Breed modal ═════════════════════════════════════════ */
+function openBreedModal() {
+    document.getElementById('breed-modal').classList.add('open');
+    document.getElementById('new_breed_name').value = '';
+    document.getElementById('breed-modal-message').style.display = 'none';
+    document.getElementById('new_breed_name').classList.remove('invalid');
+    document.getElementById('new_breed_name').focus();
+}
+function closeBreedModal() {
+    document.getElementById('breed-modal').classList.remove('open');
+}
+document.getElementById('breed-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeBreedModal();
+});
+
+document.getElementById('breedForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    var name = document.getElementById('new_breed_name').value.trim();
+    var msg  = document.getElementById('breed-modal-message');
+    var btn  = document.getElementById('breed-submit-btn');
+
+    document.getElementById('new_breed_name').classList.remove('invalid');
+    msg.style.display = 'none';
+
+    if (!name) {
+        msg.textContent = 'Breed name is required.';
+        msg.className = 'modal-message error';
+        document.getElementById('new_breed_name').classList.add('invalid');
+        return;
+    }
+
+    btn.disabled    = true;
+    btn.textContent = 'Adding…';
+
+    try {
+        var res = await fetch('/api/breeds', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ farm_name: FARM_NAME, breed_name: name }),
+        });
+        var data = await res.json();
+
+        if (data.success) {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message success';
+            await loadBreeds(data.breed_name);  /* refresh list, auto-select the new breed */
+            setTimeout(closeBreedModal, 600);
+        } else {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message error';
+        }
+    } catch (err) {
+        msg.textContent = 'Could not reach the server. Is it running?';
+        msg.className   = 'modal-message error';
+    } finally {
+        btn.disabled    = false;
+        btn.textContent = 'Add Breed';
+    }
+});
+
+var form      = document.getElementById('addForm');
+var msg       = document.getElementById('form-message');
+var submitBtn = document.getElementById('submitBtn');
+
+form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    var tag    = document.getElementById('tag_number').value.trim();
+    var gender = document.getElementById('gender').value;
+    var breed  = document.getElementById('breed').value.trim();
+    var dob    = document.getElementById('date_of_birth').value;
+    var weight = document.getElementById('weight').value;
+    var herdId = document.getElementById('herd_id').value;
+    var notes  = document.getElementById('notes').value.trim();
+
+    msg.style.display = 'none';
+    document.getElementById('tag_number').classList.remove('invalid');
+
+    if (!tag) {
+        msg.textContent = 'Tag number is required.';
+        msg.className = 'form-message error';
+        document.getElementById('tag_number').classList.add('invalid');
+        return;
+    }
+    if (!gender) {
+        msg.textContent = 'Please select a gender.';
+        msg.className = 'form-message error';
+        return;
+    }
+    if (!dob) {
+        msg.textContent = 'Date of birth is required.';
+        msg.className = 'form-message error';
+        return;
+    }
+
+    submitBtn.disabled    = true;
+    submitBtn.textContent = 'Adding…';
+
+    try {
+        var res = await fetch('/api/animals', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                farm_name:      FARM_NAME,
+                tag_number:     tag,
+                gender:         gender,
+                breed:          breed,
+                date_of_birth:  dob,
+                weight:         weight ? parseFloat(weight) : null,
+                herd_id:        herdId ? parseInt(herdId) : null,
+                notes:          notes,
+            }),
+        });
+        var data = await res.json();
+
+
+        if (data.success) {
+            msg.textContent = data.message + ' Redirecting…';
+            msg.className   = 'form-message success';
+            setTimeout(function() { window.location.href = 'livestock_list.html'; }, 1200);
+        } else {
+            msg.textContent = data.message;
+            msg.className   = 'form-message error';
+            submitBtn.disabled    = false;
+            submitBtn.textContent = 'Add Animal';
+        }
+    } catch (err) {
+        msg.textContent = 'Could not reach the server. Is it running?';
+        msg.className   = 'form-message error';
+        submitBtn.disabled    = false;
+        submitBtn.textContent = 'Add Animal';
+    }
+});
+</script>
+
+</body>
+</html>

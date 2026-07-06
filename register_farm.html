@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create Farm — MyFarm</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; font-family:Arial,sans-serif; }
+body {
+    min-height:100vh; display:flex; justify-content:center; align-items:center;
+    background:#0A1220; padding:20px;
+}
+.register-container {
+    width:420px; padding:35px; background:#00040D;
+    border-radius:18px; border:2px solid #1E293B;
+    box-shadow:0 10px 30px rgba(0,0,0,0.5);
+}
+h2 { text-align:center; color:#E5E7EB; margin-bottom:6px; }
+.subtitle { text-align:center; color:#7e9bb8; font-size:.82rem; margin-bottom:22px; }
+.input-group { margin-bottom:16px; }
+.input-group label { display:block; margin-bottom:6px; font-weight:bold; color:#CBD5E1; }
+.input-group input {
+    width:100%; padding:12px; border:2px solid #334155;
+    border-radius:8px; background:#111827; color:#E5E7EB; font-size:16px;
+}
+.input-group input:focus { outline:none; border-color:#3B82F6; }
+.input-group input.invalid { border-color:#EF4444; }
+.btn { width:100%; padding:12px; margin-top:10px; border:none; border-radius:8px;
+       cursor:pointer; font-size:16px; font-weight:bold; transition:.3s; }
+.register-btn { background:#1E3A5F; color:white; }
+.register-btn:hover { background:#294F80; }
+.register-btn:disabled { background:#1a2e47; cursor:not-allowed; opacity:.7; }
+.back-btn { background:#374151; color:white; }
+.back-btn:hover { background:#4B5563; }
+.message { margin-top:15px; text-align:center; font-weight:bold; }
+.success { color:#22C55E; }
+.error   { color:#EF4444; }
+
+/* Employee code reveal box */
+.code-box {
+    display:none; margin-top:18px; padding:16px;
+    background:rgba(57,217,138,.08); border:1px solid rgba(57,217,138,.3);
+    border-radius:10px; text-align:center;
+}
+.code-label { font-size:.78rem; color:#7e9bb8; margin-bottom:6px; }
+.code-value { font-size:1.6rem; font-weight:800; letter-spacing:.2em; color:#39d98a; }
+.code-note  { font-size:.72rem; color:#7e9bb8; margin-top:8px; }
+</style>
+</head>
+<body>
+
+<div class="register-container">
+    <h2>Create Farm</h2>
+    <p class="subtitle">You will become the Admin of this farm.</p>
+
+    <form id="registerForm">
+
+        <div class="input-group">
+            <label for="farm_name">Farm Name</label>
+            <input type="text" id="farm_name" required autocomplete="organization">
+        </div>
+
+        <div class="input-group">
+            <label for="email">Email Address</label>
+            <input type="email" id="email" required autocomplete="email">
+        </div>
+
+        <div class="input-group">
+            <label for="username">Admin Username</label>
+            <input type="text" id="username" required autocomplete="username">
+        </div>
+
+        <div class="input-group">
+            <label for="password">Admin Password</label>
+            <input type="password" id="password" required autocomplete="new-password">
+        </div>
+
+        <div class="input-group">
+            <label for="confirmPassword">Confirm Password</label>
+            <input type="password" id="confirmPassword" required autocomplete="new-password">
+        </div>
+
+        <button type="submit" class="btn register-btn" id="registerBtn">
+            Create Farm
+        </button>
+        <button type="button" class="btn back-btn"
+                onclick="window.location.href='login.html'">
+            Back to Login
+        </button>
+
+        <div id="message" class="message"></div>
+
+        <!-- Shown after successful registration -->
+        <div class="code-box" id="codeBox">
+            <div class="code-label">Your Employee Code</div>
+            <div class="code-value" id="codeValue"></div>
+            <div class="code-note">
+                Share this code with your staff so they can register under your farm.<br>
+                Keep it safe — anyone with this code can join.
+            </div>
+        </div>
+
+    </form>
+</div>
+
+<script>
+const form        = document.getElementById("registerForm");
+const message     = document.getElementById("message");
+const registerBtn = document.getElementById("registerBtn");
+
+form.querySelectorAll("input").forEach(function(input) {
+    input.addEventListener("input", function() { input.classList.remove("invalid"); });
+});
+
+form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+
+    const farmName        = document.getElementById("farm_name").value.trim();
+    const email           = document.getElementById("email").value.trim();
+    const username        = document.getElementById("username").value.trim();
+    const password        = document.getElementById("password").value;
+    const confirmPassword = document.getElementById("confirmPassword").value;
+
+    // Client-side checks
+    if (password !== confirmPassword) {
+        message.textContent = "Passwords do not match.";
+        message.className   = "message error";
+        document.getElementById("confirmPassword").classList.add("invalid");
+        return;
+    }
+    if (password.length < 6) {
+        message.textContent = "Password must be at least 6 characters.";
+        message.className   = "message error";
+        document.getElementById("password").classList.add("invalid");
+        return;
+    }
+    if (username.length < 3 || !/^[a-zA-Z0-9]+$/.test(username)) {
+        message.textContent = "Username must be at least 3 alphanumeric characters.";
+        message.className   = "message error";
+        document.getElementById("username").classList.add("invalid");
+        return;
+    }
+
+    registerBtn.disabled    = true;
+    registerBtn.textContent = "Creating farm…";
+    message.textContent     = "";
+    message.className       = "message";
+
+    try {
+        const res  = await fetch("/api/register/farm", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ farm_name: farmName, email, username, password }),
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            // Auto-login: the farm was just created, so log the new Admin in
+            // immediately rather than sending them back to a login screen.
+            // This avoids any stale-session mixup with a previously logged-in farm.
+            localStorage.setItem("farmName",     data.farm_name);
+            localStorage.setItem("farmId",        data.farm_id);
+            localStorage.setItem("userName",      data.username);
+            localStorage.setItem("userId",        data.user_id);
+            localStorage.setItem("userRole",      data.role);
+            localStorage.setItem("userRoleLabel", data.role_label);
+
+            message.textContent = "Farm created! Taking you to your dashboard…";
+            message.className   = "message success";
+
+            // Show the employee code before redirecting
+            document.getElementById("codeValue").textContent = data.employee_code;
+            document.getElementById("codeBox").style.display  = "block";
+
+            setTimeout(function() { window.location.href = "dashboard.html"; }, 4000);
+        } else {
+            message.textContent = data.message;
+            message.className   = "message error";
+            registerBtn.disabled    = false;
+            registerBtn.textContent = "Create Farm";
+        }
+    } catch (err) {
+        message.textContent     = "Could not reach the server. Is it running?";
+        message.className       = "message error";
+        registerBtn.disabled    = false;
+        registerBtn.textContent = "Create Farm";
+    }
+});
+</script>
+
+</body>
+</html>

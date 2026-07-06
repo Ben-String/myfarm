@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>All Livestock — MyFarm</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+
+<style>
+/* ══ List-page-only styles ══════════════════════════════════ */
+.back-link {
+    display:inline-flex; align-items:center; gap:6px;
+    color:var(--muted); font-size:.82rem; font-weight:500;
+    cursor:pointer; margin-bottom:2px; width:fit-content;
+}
+.back-link:hover { color:var(--accent); }
+.back-link svg { width:14px; height:14px; stroke:currentColor; fill:none;
+                  stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+
+/* Filter bar */
+.filter-bar {
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:14px; padding:14px 16px;
+}
+.filter-field { display:flex; flex-direction:column; gap:5px; }
+.filter-field label { font-size:.7rem; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+.filter-field input, .filter-field select {
+    background:var(--input); border:1px solid var(--border); border-radius:8px;
+    padding:8px 10px; color:var(--text); font-size:.82rem; font-family:'Inter',sans-serif;
+    min-width:130px;
+}
+.filter-field input:focus, .filter-field select:focus { outline:none; border-color:var(--accent); }
+.filter-clear {
+    align-self:flex-end; background:var(--input); border:1px solid var(--border);
+    border-radius:8px; padding:8px 14px; color:var(--muted); font-size:.8rem;
+    font-weight:600; cursor:pointer; transition:.2s;
+}
+.filter-clear:hover { color:var(--text); border-color:var(--muted); }
+.result-count { font-size:.78rem; color:var(--muted); margin-left:auto; align-self:flex-end; padding-bottom:9px; }
+
+/* Table */
+.table-wrap { overflow-x:auto; }
+table.animals-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+.animals-table th {
+    text-align:left; padding:10px 14px; color:var(--muted);
+    font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; font-weight:600;
+    border-bottom:1px solid var(--border); cursor:pointer; white-space:nowrap;
+    user-select:none;
+}
+.animals-table th:hover { color:var(--text); }
+.animals-table th.sorted::after { content:' ▾'; color:var(--accent); }
+.animals-table td {
+    padding:11px 14px; border-bottom:1px solid rgba(42,58,77,.4); white-space:nowrap;
+}
+.animals-table tr:last-child td { border-bottom:none; }
+.animals-table tr:hover td { background:rgba(255,255,255,.015); }
+.tag-pill {
+    display:inline-block; background:var(--accent-dim); color:var(--accent);
+    font-weight:700; font-size:.78rem; padding:3px 9px; border-radius:6px;
+}
+.gender-pill { font-size:.78rem; padding:3px 9px; border-radius:6px; font-weight:600; }
+.gender-pill.Male   { background:var(--blue-dim);  color:var(--blue); }
+.gender-pill.Female { background:rgba(244,114,182,.12); color:#f472b6; }
+.notes-cell { color:var(--muted); max-width:220px; overflow:hidden; text-overflow:ellipsis;
+              white-space:nowrap; font-size:.8rem; }
+
+/* Pagination */
+.pagination { display:flex; align-items:center; justify-content:center; gap:8px; padding-top:6px; }
+.page-btn {
+    background:var(--input); border:1px solid var(--border); border-radius:8px;
+    padding:7px 13px; color:var(--text); font-size:.8rem; font-weight:600;
+    cursor:pointer; transition:.2s;
+}
+.page-btn:hover:not(:disabled) { border-color:var(--accent); }
+.page-btn:disabled { opacity:.35; cursor:not-allowed; }
+.page-info { font-size:.78rem; color:var(--muted); padding:0 6px; }
+</style>
+</head>
+<body>
+
+<div class="dashboard-layout">
+<div id="sidebar-mount"></div>
+
+    <div class="main">
+        <div id="topbar-mount"></div>
+
+        <div class="content">
+
+            <span class="back-link" onclick="window.location.href='livestock.html'">
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+                Back to Livestock
+            </span>
+
+            <div class="banner error" id="api-error">
+                ⚠ Could not reach the server. Is app.py running?
+            </div>
+
+            <!-- ── Filters ─────────────────────────────────── -->
+            <div class="filter-bar">
+                <div class="filter-field">
+                    <label for="f-tag">Tag Number</label>
+                    <input type="text" id="f-tag" placeholder="Search tag…">
+                </div>
+                <div class="filter-field">
+                    <label for="f-breed">Breed</label>
+                    <select id="f-breed"><option value="">All breeds</option></select>
+                </div>
+                <div class="filter-field">
+                    <label for="f-herd">Herd</label>
+                    <select id="f-herd"><option value="">All herds</option></select>
+                </div>
+                <div class="filter-field">
+                    <label for="f-gender">Gender</label>
+                    <select id="f-gender">
+                        <option value="">All</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label for="f-sort">Sort By</label>
+                    <select id="f-sort">
+                        <option value="tag_number">Tag Number</option>
+                        <option value="dob">Age</option>
+                        <option value="weight">Weight</option>
+                        <option value="herd">Herd</option>
+                        <option value="gender">Gender</option>
+                        <option value="breed">Breed</option>
+                    </select>
+                </div>
+                <button class="filter-clear" onclick="clearFilters()">Clear Filters</button>
+                <span class="result-count" id="result-count"></span>
+            </div>
+
+            <!-- ── Table ───────────────────────────────────── -->
+            <div class="panel" style="padding:0;overflow:hidden;">
+                <div class="table-wrap">
+                    <table class="animals-table">
+                        <thead>
+                            <tr>
+                                <th>Tag</th>
+                                <th>Gender</th>
+                                <th>Breed</th>
+                                <th>Age</th>
+                                <th>Date of Birth</th>
+                                <th>Weight</th>
+                                <th>Herd</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="animals-tbody">
+                            <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px;">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="pagination" id="pagination"></div>
+
+        </div>
+    </div>
+</div>
+
+<button class="fab" title="Add livestock" onclick="window.location.href='add_livestock.html'">+</button>
+
+<script src="shared.js"></script>
+<script>
+initLayout('livestock', {
+    title:    'All Livestock',
+    subtitle: 'Browse, search, and filter every registered animal.',
+});
+
+var PAGE_SIZE   = 25;
+var currentPage = 0;
+var totalCount  = 0;
+
+/* Pre-select filters from URL params (clicked from a herd or breed card) */
+var urlParams = new URLSearchParams(window.location.search);
+var presetHerd  = urlParams.get('herd');
+var presetBreed = urlParams.get('breed');
+
+async function loadHerdOptions() {
+    try {
+        var res  = await fetch('/api/herds?farm_name=' + encodeURIComponent(FARM_NAME));
+        var data = await res.json();
+        var sel  = document.getElementById('f-herd');
+        (data.herds || []).forEach(function(h) {
+            var opt = document.createElement('option');
+            opt.value = h.id;
+            opt.textContent = h.herd_name;
+            sel.appendChild(opt);
+        });
+        if (presetHerd) sel.value = presetHerd;
+    } catch (err) {
+        console.warn('Could not load herd list for filter:', err);
+    }
+}
+
+async function loadBreedOptions() {
+    try {
+        var res  = await fetch('/api/breeds?farm_name=' + encodeURIComponent(FARM_NAME));
+        var data = await res.json();
+        var sel  = document.getElementById('f-breed');
+        (data.breeds || []).forEach(function(b) {
+            var opt = document.createElement('option');
+            opt.value = b.breed_name;
+            opt.textContent = b.breed_name;
+            sel.appendChild(opt);
+        });
+        if (presetBreed) sel.value = presetBreed;
+    } catch (err) {
+        console.warn('Could not load breed list for filter:', err);
+    }
+}
+
+function genderPillHtml(g) {
+    return '<span class="gender-pill ' + g + '">' + g + '</span>';
+}
+
+function renderRows(animals) {
+    var tbody = document.getElementById('animals-tbody');
+    if (!animals || animals.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px;">No animals match these filters.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = animals.map(function(a) {
+        return [
+            '<tr>',
+            '  <td><span class="tag-pill">#', escHtml(a.tag_number), '</span></td>',
+            '  <td>', genderPillHtml(a.gender), '</td>',
+            '  <td>', escHtml(a.breed), '</td>',
+            '  <td>', escHtml(a.age), '</td>',
+            '  <td>', escHtml(a.date_of_birth || '—'), '</td>',
+            '  <td>', a.weight != null ? a.weight + ' lb' : '—', '</td>',
+            '  <td>', escHtml(a.herd_name), '</td>',
+            '  <td class="notes-cell" title="', escHtml(a.notes), '">', escHtml(a.notes) || '—', '</td>',
+            '</tr>',
+        ].join('');
+    }).join('');
+}
+
+function renderPagination() {
+    var pag = document.getElementById('pagination');
+    var totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+    pag.innerHTML =
+        '<button class="page-btn" id="prev-btn" ' + (currentPage === 0 ? 'disabled' : '') + '>← Prev</button>' +
+        '<span class="page-info">Page ' + (currentPage + 1) + ' of ' + totalPages + '</span>' +
+        '<button class="page-btn" id="next-btn" ' + (currentPage >= totalPages - 1 ? 'disabled' : '') + '>Next →</button>';
+
+    document.getElementById('prev-btn').onclick = function() { currentPage--; loadAnimals(); };
+    document.getElementById('next-btn').onclick = function() { currentPage++; loadAnimals(); };
+}
+
+var sortedCol = 'tag_number';
+
+async function loadAnimals() {
+    var params = new URLSearchParams();
+    params.set('farm_name', FARM_NAME);
+    params.set('limit',  PAGE_SIZE);
+    params.set('offset', currentPage * PAGE_SIZE);
+    params.set('sort',   document.getElementById('f-sort').value);
+
+    var tag    = document.getElementById('f-tag').value.trim();
+    var breed  = document.getElementById('f-breed').value.trim();
+    var herd   = document.getElementById('f-herd').value;
+    var gender = document.getElementById('f-gender').value;
+    if (tag)    params.set('tag', tag);
+    if (breed)  params.set('breed', breed);
+    if (herd)   params.set('herd_id', herd);
+    if (gender) params.set('gender', gender);
+
+    try {
+        var res  = await fetch('/api/animals?' + params.toString());
+        var data = await res.json();
+        totalCount = data.total || 0;
+
+        document.getElementById('result-count').textContent =
+            totalCount + ' animal' + (totalCount !== 1 ? 's' : '') + ' found';
+
+        renderRows(data.animals);
+        renderPagination();
+        document.getElementById('api-error').style.display = 'none';
+
+    } catch (err) {
+        document.getElementById('api-error').style.display = 'block';
+        console.warn('API unreachable:', err);
+        renderRows([]);
+        document.getElementById('result-count').textContent = '0 animals found';
+    }
+}
+
+/* Re-fetch on any filter change, reset to page 0 */
+['f-tag','f-breed','f-herd','f-gender','f-sort'].forEach(function(id) {
+    var el = document.getElementById(id);
+    var evt = (el.tagName === 'SELECT') ? 'change' : 'input';
+    var debounce;
+    el.addEventListener(evt, function() {
+        clearTimeout(debounce);
+        debounce = setTimeout(function() {
+            currentPage = 0;
+            loadAnimals();
+        }, evt === 'input' ? 300 : 0);
+    });
+});
+
+function clearFilters() {
+    document.getElementById('f-tag').value    = '';
+    document.getElementById('f-breed').value  = '';
+    document.getElementById('f-herd').value   = '';
+    document.getElementById('f-gender').value = '';
+    document.getElementById('f-sort').value   = 'tag_number';
+    currentPage = 0;
+    loadAnimals();
+}
+
+(async function init() {
+    await Promise.all([loadHerdOptions(), loadBreedOptions()]);
+    loadAnimals();
+})();
+</script>
+
+</body>
+</html>

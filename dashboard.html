@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyFarm Dashboard</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+
+<style>
+/* ══ Dashboard-only styles (chart + activity feed) ══════════════ */
+.panel-link { cursor:default; opacity:.5; }  /* greyed — no target page yet */
+
+.canvas-wrap { position:relative; height:235px; }
+#chart { position:absolute; top:0; left:0; width:100%; height:100%; display:block; cursor:crosshair; }
+
+.chart-tooltip {
+    position:fixed;
+    background:var(--surface); border:1px solid rgba(57,217,138,.4);
+    border-radius:10px; padding:9px 13px;
+    pointer-events:none; z-index:500;
+    display:none; min-width:115px;
+    box-shadow:0 6px 24px rgba(0,0,0,.5);
+}
+.tt-head { font-size:.7rem;  color:var(--muted); margin-bottom:3px; }
+.tt-val  { font-size:1rem;   font-weight:800; color:var(--accent); }
+.tt-unit { font-size:.68rem; color:var(--muted); margin-top:1px; }
+
+#activity-list { display:flex; flex-direction:column; }
+.act-item {
+    display:flex; gap:12px; align-items:flex-start;
+    padding:11px 0; border-bottom:1px solid rgba(42,58,77,.5);
+}
+.act-item:last-child { border-bottom:none; padding-bottom:0; }
+.act-ico {
+    width:32px; height:32px; border-radius:9px;
+    background:var(--input); flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+}
+.act-ico svg {
+    width:14px; height:14px; stroke:var(--accent); fill:none;
+    stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
+}
+.act-name { font-size:.88rem; font-weight:600; margin-bottom:2px; }
+.act-desc { font-size:.77rem; color:var(--muted); margin-bottom:3px; }
+.act-time { font-size:.7rem;  color:var(--muted); opacity:.65; }
+
+/* Make all three stat cards the same height, and stop the taller
+   Herd Distribution content from stretching its neighbors. */
+.stats-grid { align-items:start; }
+.stats-grid .stat-card { min-height:172px; }
+
+/* ══ Herd Distribution donut chart ══════════════════════════════ */
+.donut-row { display:flex; align-items:center; gap:16px; }
+.donut-wrap { position:relative; width:100px; height:100px; flex-shrink:0; }
+.donut {
+    width:100px; height:100px; border-radius:50%;
+    background:var(--input);
+    transition:background 1s cubic-bezier(.16,1,.3,1);
+}
+.donut-center {
+    position:absolute; inset:0; margin:auto; width:64px; height:64px;
+    border-radius:50%; background:var(--surface);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+}
+.donut-total { font-size:1.2rem; font-weight:800; line-height:1.15; }
+.donut-total-label { font-size:.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-top:1px; }
+.donut-legend {
+    display:flex; flex-direction:column; gap:6px; min-width:0; flex:1;
+    max-height:100px; overflow-y:auto; padding-right:4px;
+}
+.donut-legend::-webkit-scrollbar { width:4px; }
+.donut-legend::-webkit-scrollbar-track { background:transparent; }
+.donut-legend::-webkit-scrollbar-thumb { background:var(--input); border-radius:4px; }
+.donut-legend-item { display:flex; align-items:center; gap:6px; font-size:.74rem; color:var(--text); flex-shrink:0; }
+.donut-legend-item .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.donut-legend-item .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.donut-legend-item .pct  { color:var(--muted); margin-left:auto; flex-shrink:0; padding-left:6px; }
+</style>
+</head>
+<body>
+
+<div class="dashboard-layout">
+<div id="sidebar-mount"></div>
+
+    <div class="main">
+        <div id="topbar-mount"></div>
+
+
+        <!-- Content -->
+        <div class="content">
+
+            <!-- Server error banner (shown if API fetch fails) -->
+            <div class="banner error" id="api-error">
+                ⚠ Could not reach the server — showing cached data. Is app.py running?
+            </div>
+
+
+            <!-- ── Stat cards ──────────────────────────────── -->
+            <div class="stats-grid">
+
+                <div class="stat-card">
+                    <div class="stat-icon-box">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M3 8h18M3 8l2-4h14l2 4M3 8l-1 9h20l-1-9"/>
+                            <circle cx="9" cy="14" r="1.5"/>
+                            <circle cx="15" cy="14" r="1.5"/>
+                        </svg>
+                    </div>
+                    <div class="stat-label">Total Livestock</div>
+                    <div class="stat-value" id="cnt-livestock">—</div>
+                    <div class="stat-change" id="chg-livestock">Fetching…</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon-box">
+                        <svg viewBox="0 0 24 24">
+                            <circle cx="8" cy="7" r="3"/>
+                            <path d="M2 21c0-3.31 2.69-6 6-6"/>
+                            <circle cx="16" cy="7" r="3"/>
+                            <path d="M22 21c0-3.31-2.69-6-6-6"/>
+                            <path d="M11 21c0-3.31.895-6 3-6s3 2.69 3 6"/>
+                        </svg>
+                    </div>
+                    <div class="stat-label">Total Herds</div>
+                    <div class="stat-value" id="cnt-herds">—</div>
+                    <div class="stat-change" id="chg-herds">Fetching…</div>
+                </div>
+
+                <div class="stat-card" id="herd-dist-card">
+                    <div class="stat-label" style="margin-bottom:12px;">Herd Distribution</div>
+                    <div class="donut-row">
+                        <div class="donut-wrap">
+                            <div class="donut" id="herd-donut"></div>
+                            <div class="donut-center">
+                                <div class="donut-total" id="donut-total">0</div>
+                                <div class="donut-total-label">animals</div>
+                            </div>
+                        </div>
+                        <div class="donut-legend" id="donut-legend">
+                            <span style="color:var(--muted); font-size:.75rem;">Loading…</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ── Chart + Activity ────────────────────────── -->
+            <div class="two-col">
+
+                <div class="panel">
+                    <div class="panel-head">
+                        <span class="panel-title">Livestock Growth Over Time</span>
+                        <span class="panel-link">View report →</span>
+                    </div>
+                    <div class="canvas-wrap">
+                        <canvas id="chart"></canvas>
+                        <div id="chart-empty" style="display:none; position:absolute; inset:0; display:none; align-items:center; justify-content:center; flex-direction:column; gap:8px; color:var(--muted); text-align:center;">
+                            <svg viewBox="0 0 24 24" style="width:32px;height:32px;stroke:var(--muted);fill:none;stroke-width:1.5;opacity:.6;"><path d="M3 3v18h18"/><path d="M7 16l4-4 3 3 5-6"/></svg>
+                            <p style="font-size:.82rem;">No livestock history yet — add an animal to start tracking growth.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-head">
+                        <span class="panel-title">Recent Activity</span>
+                        <span class="panel-link">See all →</span>
+                    </div>
+                    <div id="activity-list">
+                        <!-- Skeleton placeholders while data loads -->
+                        <div class="act-item">
+                            <div class="act-ico skeleton" style="width:32px;height:32px;border-radius:9px;flex-shrink:0;"></div>
+                            <div style="flex:1">
+                                <div class="skeleton" style="height:13px;width:75%;margin-bottom:6px;"></div>
+                                <div class="skeleton" style="height:10px;width:55%;"></div>
+                            </div>
+                        </div>
+                        <div class="act-item">
+                            <div class="act-ico skeleton" style="width:32px;height:32px;border-radius:9px;flex-shrink:0;"></div>
+                            <div style="flex:1">
+                                <div class="skeleton" style="height:13px;width:80%;margin-bottom:6px;"></div>
+                                <div class="skeleton" style="height:10px;width:60%;"></div>
+                            </div>
+                        </div>
+                        <div class="act-item">
+                            <div class="act-ico skeleton" style="width:32px;height:32px;border-radius:9px;flex-shrink:0;"></div>
+                            <div style="flex:1">
+                                <div class="skeleton" style="height:13px;width:65%;margin-bottom:6px;"></div>
+                                <div class="skeleton" style="height:10px;width:50%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div><!-- /content -->
+    </div><!-- /main -->
+</div><!-- /layout -->
+
+<!-- Floating chart tooltip -->
+<div class="chart-tooltip" id="chart-tooltip">
+    <div class="tt-head" id="tt-head"></div>
+    <div class="tt-val"  id="tt-val"></div>
+    <div class="tt-unit">head of livestock</div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+/* Sidebar, topbar, role badge, avatar, logout — all handled by shared.js */
+initLayout('dashboard');
+
+/* ══════════════════════════════════════════════════════════════════
+   CHART
+   Defaults overwritten by /api/livestock/history response.
+════════════════════════════════════════════════════════════════ */
+var MONTHS = [];
+var DATA   = [];
+var Y_MIN  = 0;
+var Y_MAX  = 100;
+var Y_STEP = 25;
+var ACCENT = '#39d98a';
+var PAD    = { L:52, R:10, T:12, B:30 };
+var pts    = [];
+var hasChartData = false;
+
+/* Catmull-Rom → cubic-bezier spline */
+function drawSpline(ctx, points) {
+    ctx.moveTo(points[0].x, points[0].y);
+    for (var i = 0; i < points.length - 1; i++) {
+        var p0 = points[Math.max(i-1, 0)];
+        var p1 = points[i];
+        var p2 = points[i+1];
+        var p3 = points[Math.min(i+2, points.length-1)];
+        ctx.bezierCurveTo(
+            p1.x + (p2.x-p0.x)/6, p1.y + (p2.y-p0.y)/6,
+            p2.x - (p3.x-p1.x)/6, p2.y - (p3.y-p1.y)/6,
+            p2.x, p2.y
+        );
+    }
+}
+
+function renderChart(progress, hoveredIdx) {
+    if (hoveredIdx === undefined) hoveredIdx = -1;
+    var canvas = document.getElementById('chart');
+    var emptyEl = document.getElementById('chart-empty');
+
+    /* No data at all — show the empty state */
+    if (DATA.length === 0) {
+        canvas.style.display = 'none';
+        emptyEl.style.display = 'flex';
+        return;
+    }
+    canvas.style.display = 'block';
+    emptyEl.style.display = 'none';
+
+    var wrap   = canvas.parentElement;
+    var dpr    = window.devicePixelRatio || 1;
+    var W = wrap.offsetWidth, H = wrap.offsetHeight;
+    if (!W || !H) return;
+
+    var needW = Math.round(W*dpr), needH = Math.round(H*dpr);
+    if (canvas.width !== needW || canvas.height !== needH) {
+        canvas.width = needW; canvas.height = needH;
+    }
+
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save(); ctx.scale(dpr, dpr);
+
+    var n = DATA.length;
+    var iW = W - PAD.L - PAD.R;
+    var iH = H - PAD.T - PAD.B;
+
+    function gx(i) { return n === 1 ? PAD.L + iW/2 : PAD.L + (i/(n-1))*iW; }
+    function gy(v) { return PAD.T + (1-(v-Y_MIN)/(Y_MAX-Y_MIN))*iH; }
+
+    pts = DATA.map(function(v,i) { return { x:gx(i), y:gy(v), v:v, m:MONTHS[i] }; });
+
+    /* Y-axis label */
+    ctx.save();
+    ctx.translate(11, PAD.T + iH/2); ctx.rotate(-Math.PI/2);
+    ctx.font = '9px Inter, sans-serif';
+    ctx.fillStyle = 'rgba(126,155,184,.45)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Head count', 0, 0);
+    ctx.restore();
+
+    /* Grid lines + Y labels */
+    ctx.font = '9.5px Inter, sans-serif';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (var v = Y_MIN; v <= Y_MAX; v += Y_STEP) {
+        var yy = gy(v);
+        var isEdge = (v === Y_MIN || v === Y_MAX);
+        ctx.strokeStyle = isEdge ? 'rgba(42,58,77,.55)' : 'rgba(42,58,77,.4)';
+        ctx.lineWidth   = isEdge ? 0.75 : 0.5;
+        ctx.beginPath(); ctx.moveTo(PAD.L, yy); ctx.lineTo(W-PAD.R, yy); ctx.stroke();
+        ctx.fillStyle = 'rgba(126,155,184,.75)';
+        ctx.fillText((v/1000).toFixed(1)+'k', PAD.L-6, yy);
+    }
+
+    /* X labels */
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(126,155,184,.75)';
+    pts.forEach(function(pt) { ctx.fillText(pt.m, pt.x, H-PAD.B+8); });
+
+    /* Clip for reveal animation */
+    ctx.save();
+    ctx.beginPath(); ctx.rect(PAD.L, 0, iW*progress+14, H); ctx.clip();
+
+    /* Area fill */
+    var grad = ctx.createLinearGradient(0, PAD.T, 0, H-PAD.B);
+    grad.addColorStop(0, 'rgba(57,217,138,.18)');
+    grad.addColorStop(1, 'rgba(57,217,138,.01)');
+    ctx.beginPath(); drawSpline(ctx, pts);
+    ctx.lineTo(pts[n-1].x, H-PAD.B); ctx.lineTo(pts[0].x, H-PAD.B);
+    ctx.closePath(); ctx.fillStyle = grad; ctx.fill();
+
+    /* Spline */
+    ctx.beginPath(); drawSpline(ctx, pts);
+    ctx.strokeStyle = ACCENT; ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+
+    ctx.restore(); /* end clip */
+
+    /* Data-point circles */
+    pts.forEach(function(pt, i) {
+        var alpha = Math.max(0, Math.min(1, progress*(n-1)-i+1));
+        if (alpha === 0) return;
+        var isH = (i === hoveredIdx);
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, isH ? 7 : 5, 0, Math.PI*2);
+        ctx.fillStyle = isH ? ACCENT : '#111a26'; ctx.fill();
+        if (!isH) { ctx.lineWidth = 2; ctx.strokeStyle = ACCENT; ctx.stroke(); }
+        if (isH) {
+            ctx.font = '9.5px Inter, sans-serif';
+            ctx.fillStyle = ACCENT;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+            ctx.fillText('(' + pt.m + ', ' + pt.v.toLocaleString() + ')', pt.x, pt.y-11);
+        }
+        ctx.globalAlpha = 1;
+    });
+
+    ctx.restore();
+}
+
+function animateChart() {
+    var dur = 1500, t0 = performance.now();
+    function frame(t) {
+        var p = Math.min((t-t0)/dur, 1);
+        renderChart(1-Math.pow(1-p, 3));
+        if (p < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+}
+
+var rsz;
+window.addEventListener('resize', function() {
+    clearTimeout(rsz);
+    rsz = setTimeout(function() { renderChart(1); }, 80);
+});
+
+/* Chart tooltip — year is read from the actual data, not hardcoded */
+var tooltip = document.getElementById('chart-tooltip');
+var ttHead  = document.getElementById('tt-head');
+var ttVal   = document.getElementById('tt-val');
+var lastHov = -1;
+var CHART_YEAR = new Date().getFullYear(); /* updated when API responds */
+
+document.getElementById('chart').addEventListener('mousemove', function(e) {
+    if (!pts.length) return;
+    var rect = this.getBoundingClientRect();
+    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    var hov = -1, minD = 32;
+    pts.forEach(function(pt, i) {
+        var d = Math.hypot(mx-pt.x, my-pt.y);
+        if (d < minD) { minD = d; hov = i; }
+    });
+    if (hov !== lastHov) { lastHov = hov; renderChart(1, hov); }
+    if (hov >= 0) {
+        ttHead.textContent        = pts[hov].m + ' ' + CHART_YEAR;
+        ttVal.textContent         = pts[hov].v.toLocaleString();
+        tooltip.style.display     = 'block';
+        tooltip.style.left        = Math.min(e.clientX+16, window.innerWidth-140) + 'px';
+        tooltip.style.top         = Math.max(e.clientY-64, 8) + 'px';
+    } else {
+        tooltip.style.display = 'none';
+    }
+});
+document.getElementById('chart').addEventListener('mouseleave', function() {
+    tooltip.style.display = 'none';
+    if (lastHov !== -1) { lastHov = -1; renderChart(1, -1); }
+});
+
+/* ══════════════════════════════════════════════════════════════════
+   ACTIVITY ICONS
+════════════════════════════════════════════════════════════════ */
+var ICONS = {
+    add:    '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>',
+    health: '<svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+    feed:   '<svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>',
+    edit:   '<svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
+    check:  '<svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>',
+};
+
+function pickIcon(title) {
+    var t = (title || '').toLowerCase();
+    if (/register|added|new cattle/.test(t))    return ICONS.add;
+    if (/health|inspect|vaccin/.test(t))         return ICONS.health;
+    if (/feed|inventor|storage/.test(t))         return ICONS.feed;
+    if (/breed|record|modif|edit|updat/.test(t)) return ICONS.edit;
+    return ICONS.check;
+}
+
+function escHtml(s) {
+    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderActivity(items) {
+    var list = document.getElementById('activity-list');
+    if (!items || items.length === 0) {
+        list.innerHTML = '<p style="color:var(--muted);font-size:.82rem;padding:12px 0;">No activity recorded yet.</p>';
+        return;
+    }
+    list.innerHTML = items.map(function(item) {
+        return [
+            '<div class="act-item">',
+            '  <div class="act-ico">', pickIcon(item.title), '</div>',
+            '  <div>',
+            '    <div class="act-name">', escHtml(item.title), '</div>',
+            '    <div class="act-desc">', escHtml(item.description), '</div>',
+            '    <div class="act-time">', escHtml(item.time), '</div>',
+            '  </div>',
+            '</div>',
+        ].join('');
+    }).join('');
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   UPDATE FUNCTIONS
+════════════════════════════════════════════════════════════════ */
+function updateStats(stats) {
+    var livestock = stats.total_livestock  || 0;
+    var herds     = stats.total_herds      || 0;
+    var pct       = stats.livestock_change || 0;
+
+    countUp('cnt-livestock', livestock, 1400);
+    var chgEl = document.getElementById('chg-livestock');
+    if (livestock === 0) {
+        chgEl.textContent = 'No livestock recorded yet';
+        chgEl.classList.remove('negative');
+    } else {
+        chgEl.textContent = (pct >= 0 ? '↑ ' : '↓ ') + Math.abs(pct).toFixed(1) + '% this month';
+        if (pct < 0) chgEl.classList.add('negative');
+    }
+
+    countUp('cnt-herds', herds, 900);
+    document.getElementById('chg-herds').textContent =
+        herds === 0 ? 'No herds recorded yet' : herds + ' active herd' + (herds !== 1 ? 's' : '');
+}
+
+/* ══ Herd Distribution donut chart ═══════════════════════════════
+   Uses a CSS conic-gradient for the ring (crisp at any size, no
+   canvas needed) plus a color-coded legend built from /api/herds. */
+var DONUT_COLORS = ['#39d98a', '#60a5fa', '#f472b6', '#fbbf24', '#a78bfa', '#fb923c', '#34d399', '#818cf8'];
+
+function updateHerdDistribution(herds) {
+    var donut  = document.getElementById('herd-donut');
+    var legend = document.getElementById('donut-legend');
+    var totalEl = document.getElementById('donut-total');
+
+    var total = (herds || []).reduce(function(sum, h) { return sum + h.head_count; }, 0);
+    totalEl.textContent = total.toLocaleString();
+
+    if (!herds || herds.length === 0 || total === 0) {
+        donut.style.background = 'var(--input)';
+        legend.innerHTML = '<span style="color:var(--muted); font-size:.75rem;">No herds yet</span>';
+        return;
+    }
+
+    /* Build the conic-gradient stop list and the legend rows together */
+    var stops = [];
+    var cursor = 0;
+    var legendHtml = herds.map(function(h, i) {
+        var color = DONUT_COLORS[i % DONUT_COLORS.length];
+        var slicePct = total > 0 ? (h.head_count / total * 100) : 0;
+        var start = cursor;
+        var end   = cursor + slicePct;
+        stops.push(color + ' ' + start.toFixed(2) + '% ' + end.toFixed(2) + '%');
+        cursor = end;
+
+        return [
+            '<div class="donut-legend-item">',
+            '  <span class="dot" style="background:', color, '"></span>',
+            '  <span class="name">', escHtml(h.herd_name), '</span>',
+            '  <span class="pct">', slicePct.toFixed(0), '%</span>',
+            '</div>',
+        ].join('');
+    }).join('');
+
+    donut.style.background = 'conic-gradient(' + stops.join(', ') + ')';
+    legend.innerHTML = legendHtml;
+}
+
+function updateChart(history) {
+    MONTHS = history.months || [];
+    DATA   = history.counts || [];
+
+    if (DATA.length === 0) return;  /* renderChart() shows the empty state */
+
+    if (history.years && history.years.length) {
+        CHART_YEAR = history.years[history.years.length - 1];
+    }
+
+    var minVal = Math.min.apply(null, DATA);
+    var maxVal = Math.max.apply(null, DATA);
+    /* With a single point there's no spread — pad generously around it */
+    var range  = (maxVal - minVal) || Math.max(maxVal * 0.3, 20);
+    Y_MIN = Math.floor((minVal - range * 0.3) / Y_STEP) * Y_STEP;
+    Y_MAX = Math.ceil( (maxVal + range * 0.3) / Y_STEP) * Y_STEP;
+    if (Y_MIN < 0) Y_MIN = 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   LOAD ALL DATA FROM MYSQL VIA APP.PY
+════════════════════════════════════════════════════════════════ */
+async function loadDashboardData() {
+    var enc = encodeURIComponent(FARM_NAME);
+    try {
+        var results = await Promise.all([
+            fetch('/api/stats?farm_name='             + enc).then(function(r){ return r.json(); }),
+            fetch('/api/livestock/history?farm_name=' + enc).then(function(r){ return r.json(); }),
+            fetch('/api/activity?farm_name='          + enc).then(function(r){ return r.json(); }),
+            fetch('/api/herds?farm_name='             + enc).then(function(r){ return r.json(); }),
+        ]);
+
+        updateStats(results[0]);
+        updateChart(results[1]);
+        renderActivity((results[2].items || []));
+        updateHerdDistribution(results[3].herds || []);
+
+    } catch (err) {
+        /* Server unreachable — show banner, display zeroes */
+        document.getElementById('api-error').style.display = 'block';
+        console.warn('API unreachable:', err);
+
+        countUp('cnt-livestock', 0, 800);
+        countUp('cnt-herds',     0, 800);
+        document.getElementById('chg-livestock').textContent = 'No livestock recorded yet';
+        document.getElementById('chg-herds').textContent     = 'No herds recorded yet';
+        renderActivity([]);
+        updateHerdDistribution([]);
+    }
+
+    document.fonts.ready.then(animateChart);
+}
+
+loadDashboardData();
+</script>
+
+</body>
+</html>
