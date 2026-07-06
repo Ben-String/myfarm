@@ -13,10 +13,6 @@ Endpoints:
   GET  /                      — serve login.html
   GET  /<filename>            — serve any other static file
 
-Run:
-  pip install flask werkzeug mysql-connector-python
-  python app.py
-  Open: http://localhost:8000
 """
 
 from flask import Flask, request, jsonify, send_from_directory
@@ -33,7 +29,7 @@ PORT = 8000
 DB_CONFIG = {
     "host":     "localhost",
     "user":     "root",
-    "password": "Summergirl1@",   # ← replace this
+    "password": "YOUR_PASSWORD",   # ← replace this
     "database": "myfarm",
     "buffered": True,                    # avoids "unread result" errors
 }
