@@ -220,6 +220,7 @@ initLayout('dashboard');
 ════════════════════════════════════════════════════════════════ */
 var MONTHS = [];
 var DATA   = [];
+var YEARS  = [];
 var Y_MIN  = 0;
 var Y_MAX  = 100;
 var Y_STEP = 25;
@@ -279,7 +280,7 @@ function renderChart(progress, hoveredIdx) {
     function gx(i) { return n === 1 ? PAD.L + iW/2 : PAD.L + (i/(n-1))*iW; }
     function gy(v) { return PAD.T + (1-(v-Y_MIN)/(Y_MAX-Y_MIN))*iH; }
 
-    pts = DATA.map(function(v,i) { return { x:gx(i), y:gy(v), v:v, m:MONTHS[i] }; });
+    pts = DATA.map(function(v,i) { return { x:gx(i), y:gy(v), v:v, m:MONTHS[i], yr:YEARS[i] }; });
 
     /* Y-axis label */
     ctx.save();
@@ -303,10 +304,19 @@ function renderChart(progress, hoveredIdx) {
         ctx.fillText((v/1000).toFixed(1)+'k', PAD.L-6, yy);
     }
 
-    /* X labels */
+    /* X labels — auto-thin so labels never overlap, no matter how many
+       months the chart is showing. A year suffix appears at January
+       (or the very first point) so multi-year spans stay readable. */
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.fillStyle = 'rgba(126,155,184,.75)';
-    pts.forEach(function(pt) { ctx.fillText(pt.m, pt.x, H-PAD.B+8); });
+    var minLabelGap = 34;
+    var labelStep = Math.max(1, Math.ceil((n * minLabelGap) / iW));
+    pts.forEach(function(pt, i) {
+        if (i % labelStep !== 0 && i !== n - 1) return;
+        var label = pt.m;
+        if (i === 0 || pt.m === 'Jan') label += " '" + String(pt.yr).slice(-2);
+        ctx.fillText(label, pt.x, H-PAD.B+8);
+    });
 
     /* Clip for reveal animation */
     ctx.save();
@@ -365,12 +375,11 @@ window.addEventListener('resize', function() {
     rsz = setTimeout(function() { renderChart(1); }, 80);
 });
 
-/* Chart tooltip — year is read from the actual data, not hardcoded */
+/* Chart tooltip */
 var tooltip = document.getElementById('chart-tooltip');
 var ttHead  = document.getElementById('tt-head');
 var ttVal   = document.getElementById('tt-val');
 var lastHov = -1;
-var CHART_YEAR = new Date().getFullYear(); /* updated when API responds */
 
 document.getElementById('chart').addEventListener('mousemove', function(e) {
     if (!pts.length) return;
@@ -383,7 +392,7 @@ document.getElementById('chart').addEventListener('mousemove', function(e) {
     });
     if (hov !== lastHov) { lastHov = hov; renderChart(1, hov); }
     if (hov >= 0) {
-        ttHead.textContent        = pts[hov].m + ' ' + CHART_YEAR;
+        ttHead.textContent        = pts[hov].m + ' ' + pts[hov].yr;
         ttVal.textContent         = pts[hov].v.toLocaleString();
         tooltip.style.display     = 'block';
         tooltip.style.left        = Math.min(e.clientX+16, window.innerWidth-140) + 'px';
@@ -510,12 +519,9 @@ function updateHerdDistribution(herds) {
 function updateChart(history) {
     MONTHS = history.months || [];
     DATA   = history.counts || [];
+    YEARS  = history.years  || [];
 
     if (DATA.length === 0) return;  /* renderChart() shows the empty state */
-
-    if (history.years && history.years.length) {
-        CHART_YEAR = history.years[history.years.length - 1];
-    }
 
     var minVal = Math.min.apply(null, DATA);
     var maxVal = Math.max.apply(null, DATA);

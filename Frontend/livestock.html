@@ -199,11 +199,6 @@
                 <label for="herd_name">Herd Name</label>
                 <input type="text" id="herd_name" placeholder="e.g. Herd #6 — Dairy" required>
             </div>
-            <div class="modal-field">
-                <label for="herd_head_count">Starting Head Count <span style="color:var(--muted);font-weight:400;">— optional</span></label>
-                <input type="number" id="herd_head_count" min="0" placeholder="0">
-                <div class="modal-hint">You can also add animals individually later.</div>
-            </div>
             <div class="modal-actions">
                 <button type="button" class="modal-btn secondary" onclick="closeHerdModal()">Cancel</button>
                 <button type="submit" class="modal-btn primary" id="herd-submit-btn">Create Herd</button>
@@ -357,7 +352,6 @@ async function loadBreedsOverview() {
 function openHerdModal() {
     document.getElementById('herd-modal').classList.add('open');
     document.getElementById('herd_name').value = '';
-    document.getElementById('herd_head_count').value = '';
     document.getElementById('herd-modal-message').style.display = 'none';
     document.getElementById('herd_name').classList.remove('invalid');
     document.getElementById('herd_name').focus();
@@ -373,8 +367,7 @@ document.getElementById('herd-modal').addEventListener('click', function(e) {
 document.getElementById('herdForm').addEventListener('submit', async function(e) {
     e.preventDefault();
 
-    var name  = document.getElementById('herd_name').value.trim();
-    var count = document.getElementById('herd_head_count').value;
+    var name = document.getElementById('herd_name').value.trim();
     var msg   = document.getElementById('herd-modal-message');
     var btn   = document.getElementById('herd-submit-btn');
 
@@ -396,9 +389,8 @@ document.getElementById('herdForm').addEventListener('submit', async function(e)
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                farm_name:  FARM_NAME,
-                herd_name:  name,
-                head_count: count ? parseInt(count) : 0,
+                farm_name: FARM_NAME,
+                herd_name: name,
             }),
         });
         var data = await res.json();

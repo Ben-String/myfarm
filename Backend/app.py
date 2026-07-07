@@ -13,6 +13,21 @@ Endpoints:
   GET  /                      — serve login.html
   GET  /<filename>            — serve any other static file
 
+NOTE ON FOLDER LAYOUT:
+  This file lives in Backend/app.py, while all HTML/CSS/JS pages live in
+  ../Frontend/ (sibling folder). Static files are served explicitly from
+  FRONTEND_DIR (computed below) instead of "." so that this script works
+  no matter what directory you launch it from.
+
+    project-root/
+    ├── Backend/
+    │   └── app.py   ← this file
+    └── Frontend/
+        ├── login.html
+        ├── dashboard.html
+        ├── shared.css
+        ├── shared.js
+        └── ... (all other pages)
 """
 
 from flask import Flask, request, jsonify, send_from_directory
@@ -21,15 +36,21 @@ import mysql.connector
 from mysql.connector import IntegrityError as MySQLIntegrityError
 import os, re, datetime, random, string, calendar
 
+# ── Paths ─────────────────────────────────────────────────────────────────────
+# Resolve paths relative to THIS file's location, not the current working
+# directory, so it doesn't matter where you run `python app.py` from.
+BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
+FRONTEND_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "Frontend"))
+
 # ── App ───────────────────────────────────────────────────────────────────────
-app  = Flask(__name__, static_folder=".")
+app  = Flask(__name__, static_folder=FRONTEND_DIR)
 PORT = 8000
 
 # ── MySQL config — change password to match your MySQL installation ────────────
 DB_CONFIG = {
     "host":     "localhost",
     "user":     "root",
-    "password": "YOUR_PASSWORD",   # ← replace this
+    "password": "Your_Password",   # ← replace this
     "database": "myfarm",
     "buffered": True,                    # avoids "unread result" errors
 }
@@ -98,15 +119,17 @@ def human_time_ago(ts) -> str:
     return ts.strftime("%b %d, %Y")
 
 # ── Static file serving ───────────────────────────────────────────────────────
+# All HTML/CSS/JS pages are served explicitly from FRONTEND_DIR (the sibling
+# ../Frontend folder), regardless of the working directory Flask is run from.
 @app.route("/")
 def index():
-    return send_from_directory(".", "login.html")
+    return send_from_directory(FRONTEND_DIR, "login.html")
 
 @app.route("/<path:filename>")
 def serve_static(filename):
     if ".." in filename:
         return "Forbidden", 403
-    return send_from_directory(".", filename)
+    return send_from_directory(FRONTEND_DIR, filename)
 
 # ── POST /api/register/farm ───────────────────────────────────────────────────
 @app.route("/api/register/farm", methods=["POST"])
@@ -358,11 +381,24 @@ def get_stats():
 # ── GET /api/livestock/history ────────────────────────────────────────────────
 @app.route("/api/livestock/history")
 def get_livestock_history():
-    farm_name = request.args.get("farm_name", "").strip()
+    """
+    Builds the dashboard growth chart directly from each animal's
+    date_of_birth, rather than relying on manually-upserted monthly
+    snapshots. This means:
+      - Every month between the farm's earliest animal and today gets
+        a data point automatically — no gaps on months where nobody
+        happened to add an animal.
+      - The chart's span grows/shrinks on its own to match real data
+        (capped at max_months to avoid an absurdly long chart if a
+        DOB was mistakenly entered far in the past).
+      - Counts are cumulative: each month shows the running total of
+        all animals born on or before that month.
+    """
+    farm_name  = request.args.get("farm_name", "").strip()
     if not farm_name:
         return jsonify({"error": "farm_name is required"}), 400
 
-    limit = min(int(request.args.get("limit", 12)), 24)
+    max_months = min(int(request.args.get("limit", 36)), 60)
 
     conn   = get_db()
     cursor = conn.cursor()
@@ -372,21 +408,56 @@ def get_livestock_history():
             return jsonify({"error": "Farm not found"}), 404
 
         cursor.execute(
-            """SELECT `year`, `month`, head_count FROM livestock_history
-               WHERE db_farm = %s ORDER BY `year` ASC, `month` ASC LIMIT %s""",
-            (db_farm, limit),
+            "SELECT date_of_birth FROM animals WHERE db_farm = %s AND date_of_birth IS NOT NULL",
+            (db_farm,),
         )
-        rows = cursor.fetchall()
+        dobs = [r[0] for r in cursor.fetchall()]
     finally:
         cursor.close()
         conn.close()
 
+    if not dobs:
+        return jsonify({"months": [], "counts": [], "years": []})
+
     MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun",
                    "Jul","Aug","Sep","Oct","Nov","Dec"]
-    return jsonify({
-        "months": [MONTH_NAMES[r[1] - 1] for r in rows],
-        "counts": [r[2] for r in rows],
-    })
+
+    today    = datetime.date.today()
+    earliest = min(dobs)
+
+    # Build every (year, month) bucket from the earliest DOB through
+    # the current month — this is the "automatic resize" of the chart.
+    buckets = []
+    y, m = earliest.year, earliest.month
+    while (y, m) <= (today.year, today.month):
+        buckets.append((y, m))
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+
+    # Cap very long spans to the most recent N months
+    if len(buckets) > max_months:
+        buckets = buckets[-max_months:]
+
+    # How many animals were born in each (year, month)
+    born_in = {}
+    for d in dobs:
+        key = (d.year, d.month)
+        born_in[key] = born_in.get(key, 0) + 1
+
+    # Animals born before the chart's visible window still count
+    # toward the running total shown at the first visible month.
+    running = sum(1 for d in dobs if (d.year, d.month) < buckets[0])
+
+    months, counts, years = [], [], []
+    for (yy, mm) in buckets:
+        running += born_in.get((yy, mm), 0)
+        months.append(MONTH_NAMES[mm - 1])
+        counts.append(running)
+        years.append(yy)
+
+    return jsonify({"months": months, "counts": counts, "years": years})
 
 # ── POST /api/livestock/record ────────────────────────────────────────────────
 @app.route("/api/livestock/record", methods=["POST"])
@@ -903,5 +974,6 @@ if __name__ == "__main__":
     print()
     print("🌱  MyFarm (MySQL backend) — http://localhost:" + str(PORT))
     print("    ⚠️  Open the URL above in your browser — not the HTML file directly.")
+    print("    Serving static files from:", FRONTEND_DIR)
     print()
     app.run(debug=True, port=PORT)
