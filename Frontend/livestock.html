@@ -21,6 +21,7 @@
     background:var(--surface); border:1px solid var(--border);
     border-radius:16px; padding:18px 20px;
     transition:transform .2s, border-color .2s; cursor:pointer;
+    position:relative;
 }
 .herd-card:hover { transform:translateY(-2px); border-color:rgba(57,217,138,.3); }
 .herd-card-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
@@ -36,6 +37,41 @@
 .herd-bar-track { height:5px; border-radius:4px; background:var(--input); margin-top:10px; overflow:hidden; }
 .herd-bar-fill  { height:100%; background:linear-gradient(90deg,var(--accent),#22b060); border-radius:4px;
                    width:0; transition:width 1s cubic-bezier(.16,1,.3,1); }
+
+/* ══ Card top-right cluster: percent text + "more" button ══
+   These share a flex row with a small gap so the percent text
+   naturally sits further left, leaving room for the button. */
+.card-top-right { display:flex; align-items:center; gap:8px; }
+
+.card-more-btn {
+    width:24px; height:24px; border-radius:7px; background:transparent;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    color:var(--muted); transition:.2s; position:relative; flex-shrink:0;
+}
+.card-more-btn:hover { background:var(--input); color:var(--text); }
+.card-more-btn svg { width:15px; height:15px; stroke:currentColor; fill:none;
+                      stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+
+.card-menu {
+    position:absolute; top:calc(100% + 6px); right:0;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:6px; min-width:130px; display:none; z-index:250;
+    box-shadow:0 10px 30px rgba(0,0,0,.5);
+}
+.card-menu.open { display:block; }
+.card-menu-item {
+    width:100%; padding:8px 10px; border:none; border-radius:7px; background:transparent;
+    color:var(--text); font-size:.8rem; font-weight:600; cursor:pointer; text-align:left;
+    display:flex; align-items:center; gap:8px; transition:background .15s;
+    font-family:'Inter',sans-serif;
+}
+.card-menu-item:hover { background:var(--input); }
+.card-menu-item.danger { color:var(--danger); }
+.card-menu-item svg { width:13px; height:13px; stroke:currentColor; fill:none;
+                       stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+
+.confirm-text { font-size:.86rem; color:var(--muted); margin-bottom:20px; line-height:1.5; }
+.confirm-text strong { color:var(--text); }
 
 .empty-state {
     text-align:center; padding:48px 20px; color:var(--muted);
@@ -199,6 +235,11 @@
                 <label for="herd_name">Herd Name</label>
                 <input type="text" id="herd_name" placeholder="e.g. Herd #6 — Dairy" required>
             </div>
+            <div class="modal-field">
+                <label for="herd_head_count">Starting Head Count <span style="color:var(--muted);font-weight:400;">— optional</span></label>
+                <input type="number" id="herd_head_count" min="0" placeholder="0">
+                <div class="modal-hint">You can also add animals individually later.</div>
+            </div>
             <div class="modal-actions">
                 <button type="button" class="modal-btn secondary" onclick="closeHerdModal()">Cancel</button>
                 <button type="submit" class="modal-btn primary" id="herd-submit-btn">Create Herd</button>
@@ -226,6 +267,76 @@
     </div>
 </div>
 
+<!-- Edit Herd modal -->
+<div class="modal-overlay" id="edit-herd-modal">
+    <div class="modal-box">
+        <div class="modal-title">Edit Herd</div>
+        <form id="editHerdForm">
+            <input type="hidden" id="edit_herd_id">
+            <div class="modal-field">
+                <label for="edit_herd_name">Herd Name</label>
+                <input type="text" id="edit_herd_name" required>
+            </div>
+            <div class="modal-field">
+                <label for="edit_herd_head_count">Head Count</label>
+                <input type="number" id="edit_herd_head_count" min="0">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn secondary" onclick="closeEditHerdModal()">Cancel</button>
+                <button type="submit" class="modal-btn primary" id="edit-herd-submit-btn">Save Changes</button>
+            </div>
+            <div class="modal-message" id="edit-herd-modal-message"></div>
+        </form>
+    </div>
+</div>
+
+<!-- Delete Herd confirm modal -->
+<div class="modal-overlay" id="delete-herd-modal">
+    <div class="modal-box">
+        <div class="modal-title">Delete Herd</div>
+        <input type="hidden" id="delete_herd_id">
+        <p class="confirm-text">Are you sure you want to delete <strong id="delete_herd_name"></strong>? Animals in this herd will be unassigned, not deleted.</p>
+        <div class="modal-actions">
+            <button type="button" class="modal-btn secondary" onclick="closeDeleteHerdModal()">Cancel</button>
+            <button type="button" class="modal-btn primary" style="background:linear-gradient(135deg,var(--danger),#c0392b);color:#fff;" id="delete-herd-confirm-btn" onclick="confirmDeleteHerd()">Delete Herd</button>
+        </div>
+        <div class="modal-message" id="delete-herd-modal-message"></div>
+    </div>
+</div>
+
+<!-- Edit Breed modal -->
+<div class="modal-overlay" id="edit-breed-modal">
+    <div class="modal-box">
+        <div class="modal-title">Edit Breed</div>
+        <form id="editBreedForm">
+            <input type="hidden" id="edit_breed_id">
+            <div class="modal-field">
+                <label for="edit_breed_name">Breed Name</label>
+                <input type="text" id="edit_breed_name" required>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn secondary" onclick="closeEditBreedModal()">Cancel</button>
+                <button type="submit" class="modal-btn primary" id="edit-breed-submit-btn">Save Changes</button>
+            </div>
+            <div class="modal-message" id="edit-breed-modal-message"></div>
+        </form>
+    </div>
+</div>
+
+<!-- Delete Breed confirm modal -->
+<div class="modal-overlay" id="delete-breed-modal">
+    <div class="modal-box">
+        <div class="modal-title">Delete Breed</div>
+        <input type="hidden" id="delete_breed_id">
+        <p class="confirm-text">Are you sure you want to delete <strong id="delete_breed_name"></strong>?</p>
+        <div class="modal-actions">
+            <button type="button" class="modal-btn secondary" onclick="closeDeleteBreedModal()">Cancel</button>
+            <button type="button" class="modal-btn primary" style="background:linear-gradient(135deg,var(--danger),#c0392b);color:#fff;" id="delete-breed-confirm-btn" onclick="confirmDeleteBreed()">Delete Breed</button>
+        </div>
+        <div class="modal-message" id="delete-breed-modal-message"></div>
+    </div>
+</div>
+
 <!-- Floating "+" button — opens add_livestock.html -->
 <button class="fab" title="Add livestock" onclick="window.location.href='add_livestock.html'">+</button>
 
@@ -238,6 +349,29 @@ initLayout('livestock', {
 
 var HERD_ICON = '<svg viewBox="0 0 24 24"><circle cx="8" cy="7" r="3"/><path d="M2 21c0-3.31 2.69-6 6-6"/><circle cx="16" cy="7" r="3"/><path d="M22 21c0-3.31-2.69-6-6-6"/><path d="M11 21c0-3.31.895-6 3-6s3 2.69 3 6"/></svg>';
 var BREED_ICON = '<svg viewBox="0 0 24 24"><path d="M20.59 13.41L11 3.83V3H4v7h.83l9.58 9.58a2 2 0 0 0 2.83 0l3.34-3.34a2 2 0 0 0 .01-2.83z"/><circle cx="6.5" cy="6.5" r="1.5"/></svg>';
+var MORE_ICON  = '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>';
+var EDIT_ICON  = '<svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+var TRASH_ICON = '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+
+/* Escapes a value for safe embedding inside a single-quoted JS string
+   literal that itself sits inside an HTML attribute. */
+function escJs(s) {
+    return String(s == null ? '' : s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+}
+
+function toggleCardMenu(e, menuId) {
+    e.stopPropagation();
+    var menu = document.getElementById(menuId);
+    var wasOpen = menu.classList.contains('open');
+    closeAllCardMenus();
+    if (!wasOpen) menu.classList.add('open');
+}
+function closeAllCardMenus() {
+    document.querySelectorAll('.card-menu.open').forEach(function(m) { m.classList.remove('open'); });
+}
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.card-more-btn')) closeAllCardMenus();
+});
 
 function renderHerds(herds) {
     var grid = document.getElementById('herd-grid');
@@ -252,11 +386,25 @@ function renderHerds(herds) {
     }
 
     grid.innerHTML = herds.map(function(h) {
+        var menuId = 'herd-menu-' + h.id;
         return [
             '<div class="herd-card" onclick="window.location.href=\'livestock_list.html?herd=' + h.id + '\'">',
             '  <div class="herd-card-top">',
             '    <div class="herd-icon-box">', HERD_ICON, '</div>',
-            '    <span class="herd-pct">', h.pct, '%</span>',
+            '    <div class="card-top-right">',
+            '      <span class="herd-pct">', h.pct, '%</span>',
+            '      <div class="card-more-btn" onclick="toggleCardMenu(event, \'' + menuId + '\')">',
+            MORE_ICON,
+            '        <div class="card-menu" id="', menuId, '">',
+            '          <button type="button" class="card-menu-item" onclick="event.stopPropagation(); closeAllCardMenus(); openEditHerdModal(', h.id, ', \'', escJs(h.herd_name), '\', ', h.head_count, ')">',
+            EDIT_ICON, 'Edit',
+            '          </button>',
+            '          <button type="button" class="card-menu-item danger" onclick="event.stopPropagation(); closeAllCardMenus(); openDeleteHerdModal(', h.id, ', \'', escJs(h.herd_name), '\')">',
+            TRASH_ICON, 'Delete',
+            '          </button>',
+            '        </div>',
+            '      </div>',
+            '    </div>',
             '  </div>',
             '  <div class="herd-name">', escHtml(h.herd_name), '</div>',
             '  <div class="herd-count">', h.head_count.toLocaleString(), '</div>',
@@ -286,11 +434,25 @@ function renderBreeds(breeds) {
     }
 
     grid.innerHTML = breeds.map(function(b) {
+        var menuId = 'breed-menu-' + b.id;
         return [
             '<div class="herd-card" onclick="window.location.href=\'livestock_list.html?breed=' + encodeURIComponent(b.breed_name) + '\'">',
             '  <div class="herd-card-top">',
             '    <div class="herd-icon-box">', BREED_ICON, '</div>',
-            '    <span class="herd-pct">', b.pct, '%</span>',
+            '    <div class="card-top-right">',
+            '      <span class="herd-pct">', b.pct, '%</span>',
+            '      <div class="card-more-btn" onclick="toggleCardMenu(event, \'' + menuId + '\')">',
+            MORE_ICON,
+            '        <div class="card-menu" id="', menuId, '">',
+            '          <button type="button" class="card-menu-item" onclick="event.stopPropagation(); closeAllCardMenus(); openEditBreedModal(', b.id, ', \'', escJs(b.breed_name), '\')">',
+            EDIT_ICON, 'Edit',
+            '          </button>',
+            '          <button type="button" class="card-menu-item danger" onclick="event.stopPropagation(); closeAllCardMenus(); openDeleteBreedModal(', b.id, ', \'', escJs(b.breed_name), '\')">',
+            TRASH_ICON, 'Delete',
+            '          </button>',
+            '        </div>',
+            '      </div>',
+            '    </div>',
             '  </div>',
             '  <div class="herd-name">', escHtml(b.breed_name), '</div>',
             '  <div class="herd-count">', b.animal_count.toLocaleString(), '</div>',
@@ -352,6 +514,7 @@ async function loadBreedsOverview() {
 function openHerdModal() {
     document.getElementById('herd-modal').classList.add('open');
     document.getElementById('herd_name').value = '';
+    document.getElementById('herd_head_count').value = '';
     document.getElementById('herd-modal-message').style.display = 'none';
     document.getElementById('herd_name').classList.remove('invalid');
     document.getElementById('herd_name').focus();
@@ -367,7 +530,8 @@ document.getElementById('herd-modal').addEventListener('click', function(e) {
 document.getElementById('herdForm').addEventListener('submit', async function(e) {
     e.preventDefault();
 
-    var name = document.getElementById('herd_name').value.trim();
+    var name  = document.getElementById('herd_name').value.trim();
+    var count = document.getElementById('herd_head_count').value;
     var msg   = document.getElementById('herd-modal-message');
     var btn   = document.getElementById('herd-submit-btn');
 
@@ -389,8 +553,9 @@ document.getElementById('herdForm').addEventListener('submit', async function(e)
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                farm_name: FARM_NAME,
-                herd_name: name,
+                farm_name:  FARM_NAME,
+                herd_name:  name,
+                head_count: count ? parseInt(count) : 0,
             }),
         });
         var data = await res.json();
@@ -479,6 +644,244 @@ document.getElementById('breedForm').addEventListener('submit', async function(e
         btn.textContent = 'Add Breed';
     }
 });
+
+/* ══ Edit / Delete Herd ══════════════════════════════════════ */
+function openEditHerdModal(id, name, headCount) {
+    closeAllCardMenus();
+    document.getElementById('edit_herd_id').value = id;
+    document.getElementById('edit_herd_name').value = name;
+    document.getElementById('edit_herd_head_count').value = headCount;
+    document.getElementById('edit-herd-modal-message').style.display = 'none';
+    document.getElementById('edit_herd_name').classList.remove('invalid');
+    document.getElementById('edit-herd-modal').classList.add('open');
+    document.getElementById('edit_herd_name').focus();
+}
+function closeEditHerdModal() {
+    document.getElementById('edit-herd-modal').classList.remove('open');
+}
+document.getElementById('edit-herd-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeEditHerdModal();
+});
+
+document.getElementById('editHerdForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    var id    = document.getElementById('edit_herd_id').value;
+    var name  = document.getElementById('edit_herd_name').value.trim();
+    var count = document.getElementById('edit_herd_head_count').value;
+    var msg   = document.getElementById('edit-herd-modal-message');
+    var btn   = document.getElementById('edit-herd-submit-btn');
+
+    document.getElementById('edit_herd_name').classList.remove('invalid');
+    msg.style.display = 'none';
+
+    if (!name) {
+        msg.textContent = 'Herd name is required.';
+        msg.className = 'modal-message error';
+        document.getElementById('edit_herd_name').classList.add('invalid');
+        return;
+    }
+
+    btn.disabled    = true;
+    btn.textContent = 'Saving…';
+
+    try {
+        var res = await fetch('/api/herds/' + id, {
+            method:  'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                farm_name:  FARM_NAME,
+                herd_name:  name,
+                head_count: count ? parseInt(count) : 0,
+            }),
+        });
+        var data = await res.json();
+
+        if (data.success) {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message success';
+            setTimeout(function() {
+                closeEditHerdModal();
+                loadLivestockOverview();
+            }, 700);
+        } else {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message error';
+            btn.disabled    = false;
+            btn.textContent = 'Save Changes';
+        }
+    } catch (err) {
+        msg.textContent = 'Could not reach the server. Is it running?';
+        msg.className   = 'modal-message error';
+        btn.disabled    = false;
+        btn.textContent = 'Save Changes';
+    }
+});
+
+function openDeleteHerdModal(id, name) {
+    closeAllCardMenus();
+    document.getElementById('delete_herd_id').value = id;
+    document.getElementById('delete_herd_name').textContent = name;
+    document.getElementById('delete-herd-modal-message').style.display = 'none';
+    document.getElementById('delete-herd-confirm-btn').disabled = false;
+    document.getElementById('delete-herd-confirm-btn').textContent = 'Delete Herd';
+    document.getElementById('delete-herd-modal').classList.add('open');
+}
+function closeDeleteHerdModal() {
+    document.getElementById('delete-herd-modal').classList.remove('open');
+}
+document.getElementById('delete-herd-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeDeleteHerdModal();
+});
+
+async function confirmDeleteHerd() {
+    var id  = document.getElementById('delete_herd_id').value;
+    var msg = document.getElementById('delete-herd-modal-message');
+    var btn = document.getElementById('delete-herd-confirm-btn');
+
+    btn.disabled    = true;
+    btn.textContent = 'Deleting…';
+    msg.style.display = 'none';
+
+    try {
+        var res = await fetch('/api/herds/' + id + '?farm_name=' + encodeURIComponent(FARM_NAME), { method: 'DELETE' });
+        var data = await res.json();
+
+        if (data.success) {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message success';
+            setTimeout(function() {
+                closeDeleteHerdModal();
+                loadLivestockOverview();
+            }, 600);
+        } else {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message error';
+            btn.disabled    = false;
+            btn.textContent = 'Delete Herd';
+        }
+    } catch (err) {
+        msg.textContent = 'Could not reach the server. Is it running?';
+        msg.className   = 'modal-message error';
+        btn.disabled    = false;
+        btn.textContent = 'Delete Herd';
+    }
+}
+
+/* ══ Edit / Delete Breed ═════════════════════════════════════ */
+function openEditBreedModal(id, name) {
+    closeAllCardMenus();
+    document.getElementById('edit_breed_id').value = id;
+    document.getElementById('edit_breed_name').value = name;
+    document.getElementById('edit-breed-modal-message').style.display = 'none';
+    document.getElementById('edit_breed_name').classList.remove('invalid');
+    document.getElementById('edit-breed-modal').classList.add('open');
+    document.getElementById('edit_breed_name').focus();
+}
+function closeEditBreedModal() {
+    document.getElementById('edit-breed-modal').classList.remove('open');
+}
+document.getElementById('edit-breed-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeEditBreedModal();
+});
+
+document.getElementById('editBreedForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    var id   = document.getElementById('edit_breed_id').value;
+    var name = document.getElementById('edit_breed_name').value.trim();
+    var msg  = document.getElementById('edit-breed-modal-message');
+    var btn  = document.getElementById('edit-breed-submit-btn');
+
+    document.getElementById('edit_breed_name').classList.remove('invalid');
+    msg.style.display = 'none';
+
+    if (!name) {
+        msg.textContent = 'Breed name is required.';
+        msg.className = 'modal-message error';
+        document.getElementById('edit_breed_name').classList.add('invalid');
+        return;
+    }
+
+    btn.disabled    = true;
+    btn.textContent = 'Saving…';
+
+    try {
+        var res = await fetch('/api/breeds/' + id, {
+            method:  'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ farm_name: FARM_NAME, breed_name: name }),
+        });
+        var data = await res.json();
+
+        if (data.success) {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message success';
+            setTimeout(function() {
+                closeEditBreedModal();
+                loadBreedsOverview();
+            }, 700);
+        } else {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message error';
+            btn.disabled    = false;
+            btn.textContent = 'Save Changes';
+        }
+    } catch (err) {
+        msg.textContent = 'Could not reach the server. Is it running?';
+        msg.className   = 'modal-message error';
+        btn.disabled    = false;
+        btn.textContent = 'Save Changes';
+    }
+});
+
+function openDeleteBreedModal(id, name) {
+    closeAllCardMenus();
+    document.getElementById('delete_breed_id').value = id;
+    document.getElementById('delete_breed_name').textContent = name;
+    document.getElementById('delete-breed-modal-message').style.display = 'none';
+    document.getElementById('delete-breed-confirm-btn').disabled = false;
+    document.getElementById('delete-breed-confirm-btn').textContent = 'Delete Breed';
+    document.getElementById('delete-breed-modal').classList.add('open');
+}
+function closeDeleteBreedModal() {
+    document.getElementById('delete-breed-modal').classList.remove('open');
+}
+document.getElementById('delete-breed-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeDeleteBreedModal();
+});
+
+async function confirmDeleteBreed() {
+    var id  = document.getElementById('delete_breed_id').value;
+    var msg = document.getElementById('delete-breed-modal-message');
+    var btn = document.getElementById('delete-breed-confirm-btn');
+
+    btn.disabled    = true;
+    btn.textContent = 'Deleting…';
+    msg.style.display = 'none';
+
+    try {
+        var res = await fetch('/api/breeds/' + id + '?farm_name=' + encodeURIComponent(FARM_NAME), { method: 'DELETE' });
+        var data = await res.json();
+
+        if (data.success) {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message success';
+            setTimeout(function() {
+                closeDeleteBreedModal();
+                loadBreedsOverview();
+            }, 600);
+        } else {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message error';
+            btn.disabled    = false;
+            btn.textContent = 'Delete Breed';
+        }
+    } catch (err) {
+        msg.textContent = 'Could not reach the server. Is it running?';
+        msg.className   = 'modal-message error';
+        btn.disabled    = false;
+        btn.textContent = 'Delete Breed';
+    }
+}
 
 loadLivestockOverview();
 loadBreedsOverview();

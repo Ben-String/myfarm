@@ -54,6 +54,8 @@ table.animals-table { width:100%; border-collapse:collapse; font-size:.85rem; }
 }
 .animals-table th:hover { color:var(--text); }
 .animals-table th.sorted::after { content:' ▾'; color:var(--accent); }
+.animals-table th.actions-col { cursor:default; }
+.animals-table th.actions-col:hover { color:var(--muted); }
 .animals-table td {
     padding:11px 14px; border-bottom:1px solid rgba(42,58,77,.4); white-space:nowrap;
 }
@@ -69,6 +71,20 @@ table.animals-table { width:100%; border-collapse:collapse; font-size:.85rem; }
 .notes-cell { color:var(--muted); max-width:220px; overflow:hidden; text-overflow:ellipsis;
               white-space:nowrap; font-size:.8rem; }
 
+/* Row actions */
+.actions-cell { display:flex; gap:6px; }
+.icon-btn {
+    width:30px; height:30px; border-radius:8px; border:1px solid var(--border);
+    background:var(--input); display:flex; align-items:center; justify-content:center;
+    cursor:pointer; transition:.2s; flex-shrink:0;
+}
+.icon-btn svg { width:14px; height:14px; stroke:var(--muted); fill:none;
+                stroke-width:2; stroke-linecap:round; stroke-linejoin:round; transition:.2s; }
+.icon-btn:hover { border-color:var(--accent); }
+.icon-btn:hover svg { stroke:var(--accent); }
+.icon-btn.danger-btn:hover { border-color:var(--danger); }
+.icon-btn.danger-btn:hover svg { stroke:var(--danger); }
+
 /* Pagination */
 .pagination { display:flex; align-items:center; justify-content:center; gap:8px; padding-top:6px; }
 .page-btn {
@@ -79,6 +95,55 @@ table.animals-table { width:100%; border-collapse:collapse; font-size:.85rem; }
 .page-btn:hover:not(:disabled) { border-color:var(--accent); }
 .page-btn:disabled { opacity:.35; cursor:not-allowed; }
 .page-info { font-size:.78rem; color:var(--muted); padding:0 6px; }
+
+/* ══ Modals (Edit / Delete) ══════════════════════════════════ */
+.modal-overlay {
+    position:fixed; inset:0; background:rgba(0,0,0,.6);
+    display:none; align-items:center; justify-content:center; z-index:400;
+}
+.modal-overlay.open { display:flex; }
+.modal-box {
+    background:var(--surface); border:1px solid var(--border); border-radius:18px;
+    padding:26px; width:440px; max-width:92vw;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+    max-height:88vh; overflow-y:auto;
+}
+.modal-box.small { width:380px; }
+.modal-title { font-size:1.05rem; font-weight:700; margin-bottom:18px; }
+.modal-field { margin-bottom:16px; }
+.modal-field label { display:block; margin-bottom:6px; font-size:.82rem; font-weight:600; }
+.modal-field input, .modal-field select, .modal-field textarea {
+    width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:9px;
+    background:var(--input); color:var(--text); font-size:.88rem; font-family:'Inter',sans-serif;
+}
+.modal-field textarea { resize:vertical; min-height:64px; }
+.modal-field input:focus, .modal-field select:focus, .modal-field textarea:focus { outline:none; border-color:var(--accent); }
+.modal-field input.invalid, .modal-field select.invalid { border-color:var(--danger); }
+.modal-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.modal-gender-toggle { display:flex; gap:10px; }
+.modal-gender-opt {
+    flex:1; text-align:center; padding:10px; border:1.5px solid var(--border);
+    border-radius:9px; cursor:pointer; font-weight:600; font-size:.85rem;
+    color:var(--muted); transition:.2s; background:var(--input);
+}
+.modal-gender-opt.selected.Male   { border-color:var(--blue); color:var(--blue); background:var(--blue-dim); }
+.modal-gender-opt.selected.Female { border-color:#f472b6; color:#f472b6; background:rgba(244,114,182,.12); }
+.modal-actions { display:flex; gap:10px; margin-top:6px; }
+.modal-btn { flex:1; padding:11px; border:none; border-radius:9px; cursor:pointer;
+             font-size:.86rem; font-weight:700; font-family:'Inter',sans-serif; transition:.2s; }
+.modal-btn.primary { background:linear-gradient(135deg,var(--accent),#22b060); color:#06130a; }
+.modal-btn.primary:hover { transform:translateY(-1px); }
+.modal-btn.primary:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+.modal-btn.danger { background:linear-gradient(135deg,var(--danger),#c73f3f); color:#1a0505; }
+.modal-btn.danger:hover { transform:translateY(-1px); }
+.modal-btn.danger:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+.modal-btn.secondary { background:var(--input); color:var(--text); border:1px solid var(--border); }
+.modal-btn.secondary:hover { border-color:var(--muted); }
+.modal-message { margin-top:12px; font-size:.82rem; font-weight:600; display:none; }
+.modal-message.error { display:block; color:var(--danger); }
+.modal-message.success { display:block; color:var(--accent); }
+.delete-warning { font-size:.85rem; color:var(--muted); line-height:1.5; margin-bottom:20px; }
+.delete-warning strong { color:var(--text); }
 </style>
 </head>
 <body>
@@ -151,10 +216,11 @@ table.animals-table { width:100%; border-collapse:collapse; font-size:.85rem; }
                                 <th>Weight</th>
                                 <th>Herd</th>
                                 <th>Notes</th>
+                                <th class="actions-col">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="animals-tbody">
-                            <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px;">Loading…</td></tr>
+                            <tr><td colspan="9" style="text-align:center;color:var(--muted);padding:30px;">Loading…</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -168,6 +234,82 @@ table.animals-table { width:100%; border-collapse:collapse; font-size:.85rem; }
 
 <button class="fab" title="Add livestock" onclick="window.location.href='add_livestock.html'">+</button>
 
+<!-- ══ Edit Animal modal ══════════════════════════════════════ -->
+<div class="modal-overlay" id="edit-modal">
+    <div class="modal-box">
+        <div class="modal-title">Edit Animal</div>
+        <form id="editForm">
+            <input type="hidden" id="edit_id">
+
+            <div class="modal-field">
+                <label for="edit_tag_number">Tag Number</label>
+                <input type="text" id="edit_tag_number" required>
+            </div>
+
+            <div class="modal-field">
+                <label>Gender</label>
+                <input type="hidden" id="edit_gender" value="">
+                <div class="modal-gender-toggle">
+                    <div class="modal-gender-opt Male"   data-gender="Male"   onclick="selectEditGender('Male')">Male</div>
+                    <div class="modal-gender-opt Female" data-gender="Female" onclick="selectEditGender('Female')">Female</div>
+                </div>
+            </div>
+
+            <div class="modal-field">
+                <label for="edit_breed">Breed <span style="color:var(--muted);font-weight:400;">— optional</span></label>
+                <select id="edit_breed">
+                    <option value="">— None —</option>
+                </select>
+            </div>
+
+            <div class="modal-row-2">
+                <div class="modal-field">
+                    <label for="edit_date_of_birth">Date of Birth</label>
+                    <input type="date" id="edit_date_of_birth" required>
+                </div>
+                <div class="modal-field">
+                    <label for="edit_weight">Weight (lb) <span style="color:var(--muted);font-weight:400;">— optional</span></label>
+                    <input type="number" id="edit_weight" min="0" step="0.1">
+                </div>
+            </div>
+
+            <div class="modal-field">
+                <label for="edit_herd_id">Herd</label>
+                <select id="edit_herd_id">
+                    <option value="">— Unassigned —</option>
+                </select>
+            </div>
+
+            <div class="modal-field">
+                <label for="edit_notes">Notes <span style="color:var(--muted);font-weight:400;">— optional</span></label>
+                <textarea id="edit_notes"></textarea>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="modal-btn secondary" onclick="closeEditModal()">Cancel</button>
+                <button type="submit" class="modal-btn primary" id="edit-submit-btn">Save Changes</button>
+            </div>
+            <div class="modal-message" id="edit-modal-message"></div>
+        </form>
+    </div>
+</div>
+
+<!-- ══ Delete Confirmation modal ══════════════════════════════ -->
+<div class="modal-overlay" id="delete-modal">
+    <div class="modal-box small">
+        <div class="modal-title">Delete Animal</div>
+        <p class="delete-warning">
+            Are you sure you want to delete <strong id="delete-tag-label">this animal</strong>?
+            This will remove its record and update herd counts. This cannot be undone.
+        </p>
+        <div class="modal-actions">
+            <button type="button" class="modal-btn secondary" onclick="closeDeleteModal()">Cancel</button>
+            <button type="button" class="modal-btn danger" id="delete-confirm-btn" onclick="confirmDelete()">Delete</button>
+        </div>
+        <div class="modal-message" id="delete-modal-message"></div>
+    </div>
+</div>
+
 <script src="shared.js"></script>
 <script>
 initLayout('livestock', {
@@ -179,6 +321,10 @@ var PAGE_SIZE   = 25;
 var currentPage = 0;
 var totalCount  = 0;
 
+/* Cache of the animals currently shown in the table, keyed by id,
+   so Edit can prefill its form without an extra round trip. */
+var animalsById = {};
+
 /* Pre-select filters from URL params (clicked from a herd or breed card) */
 var urlParams = new URLSearchParams(window.location.search);
 var presetHerd  = urlParams.get('herd');
@@ -188,14 +334,22 @@ async function loadHerdOptions() {
     try {
         var res  = await fetch('/api/herds?farm_name=' + encodeURIComponent(FARM_NAME));
         var data = await res.json();
-        var sel  = document.getElementById('f-herd');
-        (data.herds || []).forEach(function(h) {
-            var opt = document.createElement('option');
-            opt.value = h.id;
-            opt.textContent = h.herd_name;
-            sel.appendChild(opt);
+        var herds = data.herds || [];
+
+        var filterSel = document.getElementById('f-herd');
+        var editSel   = document.getElementById('edit_herd_id');
+
+        herds.forEach(function(h) {
+            var opt1 = document.createElement('option');
+            opt1.value = h.id; opt1.textContent = h.herd_name;
+            filterSel.appendChild(opt1);
+
+            var opt2 = document.createElement('option');
+            opt2.value = h.id; opt2.textContent = h.herd_name;
+            editSel.appendChild(opt2);
         });
-        if (presetHerd) sel.value = presetHerd;
+
+        if (presetHerd) filterSel.value = presetHerd;
     } catch (err) {
         console.warn('Could not load herd list for filter:', err);
     }
@@ -205,14 +359,22 @@ async function loadBreedOptions() {
     try {
         var res  = await fetch('/api/breeds?farm_name=' + encodeURIComponent(FARM_NAME));
         var data = await res.json();
-        var sel  = document.getElementById('f-breed');
-        (data.breeds || []).forEach(function(b) {
-            var opt = document.createElement('option');
-            opt.value = b.breed_name;
-            opt.textContent = b.breed_name;
-            sel.appendChild(opt);
+        var breeds = data.breeds || [];
+
+        var filterSel = document.getElementById('f-breed');
+        var editSel   = document.getElementById('edit_breed');
+
+        breeds.forEach(function(b) {
+            var opt1 = document.createElement('option');
+            opt1.value = b.breed_name; opt1.textContent = b.breed_name;
+            filterSel.appendChild(opt1);
+
+            var opt2 = document.createElement('option');
+            opt2.value = b.breed_name; opt2.textContent = b.breed_name;
+            editSel.appendChild(opt2);
         });
-        if (presetBreed) sel.value = presetBreed;
+
+        if (presetBreed) filterSel.value = presetBreed;
     } catch (err) {
         console.warn('Could not load breed list for filter:', err);
     }
@@ -222,12 +384,20 @@ function genderPillHtml(g) {
     return '<span class="gender-pill ' + g + '">' + g + '</span>';
 }
 
+var EDIT_ICON   = '<svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+var DELETE_ICON = '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+
 function renderRows(animals) {
     var tbody = document.getElementById('animals-tbody');
+    animalsById = {};
+
     if (!animals || animals.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px;">No animals match these filters.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:30px;">No animals match these filters.</td></tr>';
         return;
     }
+
+    animals.forEach(function(a) { animalsById[a.id] = a; });
+
     tbody.innerHTML = animals.map(function(a) {
         return [
             '<tr>',
@@ -239,6 +409,12 @@ function renderRows(animals) {
             '  <td>', a.weight != null ? a.weight + ' lb' : '—', '</td>',
             '  <td>', escHtml(a.herd_name), '</td>',
             '  <td class="notes-cell" title="', escHtml(a.notes), '">', escHtml(a.notes) || '—', '</td>',
+            '  <td>',
+            '    <div class="actions-cell">',
+            '      <button type="button" class="icon-btn" title="Edit" onclick="openEditModal(', a.id, ')">', EDIT_ICON, '</button>',
+            '      <button type="button" class="icon-btn danger-btn" title="Delete" onclick="openDeleteModal(', a.id, ')">', DELETE_ICON, '</button>',
+            '    </div>',
+            '  </td>',
             '</tr>',
         ].join('');
     }).join('');
@@ -316,6 +492,192 @@ function clearFilters() {
     document.getElementById('f-sort').value   = 'tag_number';
     currentPage = 0;
     loadAnimals();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   EDIT MODAL
+════════════════════════════════════════════════════════════════ */
+function selectEditGender(g) {
+    document.getElementById('edit_gender').value = g;
+    document.querySelectorAll('#editForm .modal-gender-opt').forEach(function(el) {
+        el.classList.toggle('selected', el.dataset.gender === g);
+    });
+}
+
+function openEditModal(id) {
+    var a = animalsById[id];
+    if (!a) return;
+
+    document.getElementById('edit_id').value           = a.id;
+    document.getElementById('edit_tag_number').value    = a.tag_number;
+    document.getElementById('edit_date_of_birth').value = a.date_of_birth || '';
+    document.getElementById('edit_weight').value        = a.weight != null ? a.weight : '';
+    document.getElementById('edit_notes').value         = a.notes || '';
+    document.getElementById('edit_breed').value         = (a.breed && a.breed !== '—') ? a.breed : '';
+    document.getElementById('edit_herd_id').value       = a.herd_id || '';
+
+    selectEditGender(a.gender);
+
+    document.getElementById('edit_tag_number').classList.remove('invalid');
+    document.getElementById('edit-modal-message').style.display = 'none';
+
+    var btn = document.getElementById('edit-submit-btn');
+    btn.disabled = false;
+    btn.textContent = 'Save Changes';
+
+    document.getElementById('edit-modal').classList.add('open');
+}
+
+function closeEditModal() {
+    document.getElementById('edit-modal').classList.remove('open');
+}
+document.getElementById('edit-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeEditModal();
+});
+
+document.getElementById('editForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    var id     = document.getElementById('edit_id').value;
+    var tag    = document.getElementById('edit_tag_number').value.trim();
+    var gender = document.getElementById('edit_gender').value;
+    var breed  = document.getElementById('edit_breed').value.trim();
+    var dob    = document.getElementById('edit_date_of_birth').value;
+    var weight = document.getElementById('edit_weight').value;
+    var herdId = document.getElementById('edit_herd_id').value;
+    var notes  = document.getElementById('edit_notes').value.trim();
+
+    var msg = document.getElementById('edit-modal-message');
+    var btn = document.getElementById('edit-submit-btn');
+
+    msg.style.display = 'none';
+    document.getElementById('edit_tag_number').classList.remove('invalid');
+
+    if (!tag) {
+        msg.textContent = 'Tag number is required.';
+        msg.className = 'modal-message error';
+        document.getElementById('edit_tag_number').classList.add('invalid');
+        return;
+    }
+    if (!gender) {
+        msg.textContent = 'Please select a gender.';
+        msg.className = 'modal-message error';
+        return;
+    }
+    if (!dob) {
+        msg.textContent = 'Date of birth is required.';
+        msg.className = 'modal-message error';
+        return;
+    }
+
+    btn.disabled    = true;
+    btn.textContent = 'Saving…';
+
+    try {
+        var res = await fetch('/api/animals/' + id, {
+            method:  'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                farm_name:      FARM_NAME,
+                tag_number:     tag,
+                gender:         gender,
+                breed:          breed,
+                date_of_birth:  dob,
+                weight:         weight ? parseFloat(weight) : null,
+                herd_id:        herdId ? parseInt(herdId) : null,
+                notes:          notes,
+            }),
+        });
+        var data = await res.json();
+
+        if (data.success) {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message success';
+            setTimeout(function() {
+                closeEditModal();
+                loadAnimals();
+            }, 600);
+        } else {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message error';
+            btn.disabled    = false;
+            btn.textContent = 'Save Changes';
+        }
+    } catch (err) {
+        msg.textContent = 'Could not reach the server. Is it running?';
+        msg.className   = 'modal-message error';
+        btn.disabled    = false;
+        btn.textContent = 'Save Changes';
+    }
+});
+
+/* ══════════════════════════════════════════════════════════════
+   DELETE MODAL
+════════════════════════════════════════════════════════════════ */
+var pendingDeleteId = null;
+
+function openDeleteModal(id) {
+    var a = animalsById[id];
+    if (!a) return;
+
+    pendingDeleteId = id;
+    document.getElementById('delete-tag-label').textContent = '#' + a.tag_number;
+    document.getElementById('delete-modal-message').style.display = 'none';
+
+    var btn = document.getElementById('delete-confirm-btn');
+    btn.disabled = false;
+    btn.textContent = 'Delete';
+
+    document.getElementById('delete-modal').classList.add('open');
+}
+
+function closeDeleteModal() {
+    document.getElementById('delete-modal').classList.remove('open');
+    pendingDeleteId = null;
+}
+document.getElementById('delete-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeDeleteModal();
+});
+
+async function confirmDelete() {
+    if (!pendingDeleteId) return;
+
+    var msg = document.getElementById('delete-modal-message');
+    var btn = document.getElementById('delete-confirm-btn');
+    msg.style.display = 'none';
+    btn.disabled    = true;
+    btn.textContent = 'Deleting…';
+
+    try {
+        var res = await fetch(
+            '/api/animals/' + pendingDeleteId + '?farm_name=' + encodeURIComponent(FARM_NAME),
+            { method: 'DELETE' }
+        );
+        var data = await res.json();
+
+        if (data.success) {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message success';
+            setTimeout(function() {
+                closeDeleteModal();
+                /* If we deleted the last row on this page, step back a page */
+                if (animalsById && Object.keys(animalsById).length === 1 && currentPage > 0) {
+                    currentPage--;
+                }
+                loadAnimals();
+            }, 500);
+        } else {
+            msg.textContent = data.message;
+            msg.className   = 'modal-message error';
+            btn.disabled    = false;
+            btn.textContent = 'Delete';
+        }
+    } catch (err) {
+        msg.textContent = 'Could not reach the server. Is it running?';
+        msg.className   = 'modal-message error';
+        btn.disabled    = false;
+        btn.textContent = 'Delete';
+    }
 }
 
 (async function init() {

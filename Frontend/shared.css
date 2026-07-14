@@ -48,12 +48,8 @@ body.role-2 .requires-it.flex-role { display:flex; }
     position:relative; z-index:200; overflow:visible;
 }
 .logo {
-    width:52px; height:52px; border-radius:16px;
-    background:linear-gradient(135deg,var(--accent),#22b060);
-    display:flex; align-items:center; justify-content:center;
-    font-weight:800; font-size:15px; color:#06130a;
-    margin-bottom:24px; box-shadow:0 0 22px var(--accent-glow);
-    cursor:pointer;
+    width:66px; height:auto; object-fit:contain;
+    margin-bottom:24px; cursor:pointer;
 }
 .sidebar-top    { display:flex; flex-direction:column; gap:10px; flex:1; }
 .sidebar-bottom { padding-bottom:4px; }

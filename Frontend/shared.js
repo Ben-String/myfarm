@@ -56,7 +56,7 @@ function toggleMenu() {
 
 var SIDEBAR_HTML =
 '<aside class="sidebar">' +
-'  <div class="logo" onclick="window.location.href=\'dashboard.html\'">MF</div>' +
+'  <img class="logo" src="logo-full.png" alt="MyFarm" onclick="window.location.href=\'dashboard.html\'">' +
 '  <div class="sidebar-top">' +
 '    <button class="tab-btn" data-tab="dashboard" onclick="goTab(\'dashboard\')">' +
 '      <div class="dashboard-icon"><span></span><span></span><span></span></div>' +

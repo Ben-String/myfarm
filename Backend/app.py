@@ -2,32 +2,30 @@
 MyFarm — Flask + MySQL Backend
 -------------------------------
 Endpoints:
-  POST /api/register/farm     — create a new farm + admin account
-  POST /api/register/account  — add an employee to an existing farm
-  POST /api/login             — authenticate; returns farm_name, username, role_label
-  GET  /api/stats             — dashboard stat cards (livestock, herds, health)
-  GET  /api/livestock/history — monthly head-count for chart
-  POST /api/livestock/record  — upsert the current month's head-count
-  GET  /api/activity          — recent activity feed
-  POST /api/activity          — log a new activity entry
-  GET  /                      — serve login.html
-  GET  /<filename>            — serve any other static file
+  POST   /api/register/farm     — create a new farm + admin account
+  POST   /api/register/account  — add an employee to an existing farm
+  POST   /api/login             — authenticate; returns farm_name, username, role_label
+  GET    /api/stats             — dashboard stat cards (livestock, herds, health)
+  GET    /api/livestock/history — monthly cumulative head-count for chart
+                                   (computed from each animal's date_of_birth)
+  POST   /api/livestock/record  — upsert the current month's head-count
+  GET    /api/activity          — recent activity feed
+  POST   /api/activity          — log a new activity entry
+  GET    /api/herds             — herd summary (+ total animals)
+  POST   /api/herds             — create a herd
+  PUT    /api/herds/<id>        — edit a herd's name / head count
+  DELETE /api/herds/<id>        — delete a herd (unassigns its animals)
+  GET    /api/breeds            — breed summary
+  POST   /api/breeds            — add a breed
+  PUT    /api/breeds/<id>       — rename a breed (keeps animals in sync)
+  DELETE /api/breeds/<id>       — delete a breed
+  GET    /api/animals           — filterable/sortable/paginated animal list
+  POST   /api/animals           — add a new animal
+  PUT    /api/animals/<id>      — edit an existing animal
+  DELETE /api/animals/<id>      — remove an animal
+  GET    /                      — serve login.html
+  GET    /<filename>            — serve any other static file
 
-NOTE ON FOLDER LAYOUT:
-  This file lives in Backend/app.py, while all HTML/CSS/JS pages live in
-  ../Frontend/ (sibling folder). Static files are served explicitly from
-  FRONTEND_DIR (computed below) instead of "." so that this script works
-  no matter what directory you launch it from.
-
-    project-root/
-    ├── Backend/
-    │   └── app.py   ← this file
-    └── Frontend/
-        ├── login.html
-        ├── dashboard.html
-        ├── shared.css
-        ├── shared.js
-        └── ... (all other pages)
 """
 
 from flask import Flask, request, jsonify, send_from_directory
@@ -36,13 +34,15 @@ import mysql.connector
 from mysql.connector import IntegrityError as MySQLIntegrityError
 import os, re, datetime, random, string, calendar
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
-# Resolve paths relative to THIS file's location, not the current working
-# directory, so it doesn't matter where you run `python app.py` from.
-BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
-FRONTEND_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "Frontend"))
-
 # ── App ───────────────────────────────────────────────────────────────────────
+# FRONTEND_DIR is computed from this file's own location (not the current
+# working directory), so it resolves correctly no matter where `python
+# app.py` is launched from. Backend/ and Frontend/ are sibling folders,
+# so we go up one level from this file, then into Frontend/.
+FRONTEND_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "Frontend")
+)
+
 app  = Flask(__name__, static_folder=FRONTEND_DIR)
 PORT = 8000
 
@@ -50,7 +50,7 @@ PORT = 8000
 DB_CONFIG = {
     "host":     "localhost",
     "user":     "root",
-    "password": "Your_Password",   # ← replace this
+    "password": "Summergirl1@",   # ← replace this
     "database": "myfarm",
     "buffered": True,                    # avoids "unread result" errors
 }
@@ -119,8 +119,6 @@ def human_time_ago(ts) -> str:
     return ts.strftime("%b %d, %Y")
 
 # ── Static file serving ───────────────────────────────────────────────────────
-# All HTML/CSS/JS pages are served explicitly from FRONTEND_DIR (the sibling
-# ../Frontend folder), regardless of the working directory Flask is run from.
 @app.route("/")
 def index():
     return send_from_directory(FRONTEND_DIR, "login.html")
@@ -665,6 +663,129 @@ def add_herd():
         "id":       herd_id,
     }), 201
 
+# ── PUT /api/herds/<id> ─────────────────────────────────────────────────────
+@app.route("/api/herds/<int:herd_id>", methods=["PUT"])
+def update_herd(herd_id):
+    """Edit a herd's name and/or head count. Body: { farm_name, herd_name, head_count }"""
+    data       = request.get_json(silent=True) or {}
+    farm_name  = data.get("farm_name", "").strip()
+    herd_name  = data.get("herd_name", "").strip()
+
+    try:
+        head_count = int(data.get("head_count", 0) or 0)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "Head count must be a number."}), 400
+
+    if not farm_name or not herd_name:
+        return jsonify({"success": False,
+                        "message": "Farm name and herd name are required."}), 400
+    if head_count < 0:
+        return jsonify({"success": False, "message": "Head count cannot be negative."}), 400
+
+    conn   = get_db()
+    cursor = conn.cursor()
+    try:
+        db_farm = get_farm_id(cursor, farm_name)
+        if not db_farm:
+            return jsonify({"success": False, "message": "Farm not found."}), 404
+
+        cursor.execute(
+            "SELECT id FROM herds WHERE id = %s AND db_farm = %s",
+            (herd_id, db_farm),
+        )
+        if not cursor.fetchone():
+            return jsonify({"success": False, "message": "Herd not found."}), 404
+
+        cursor.execute(
+            "UPDATE herds SET herd_name = %s, head_count = %s WHERE id = %s",
+            (herd_name, head_count, herd_id),
+        )
+
+        # Keep the trend chart's current-month snapshot in sync
+        cursor.execute(
+            "SELECT COALESCE(SUM(head_count), 0) FROM herds WHERE db_farm = %s",
+            (db_farm,),
+        )
+        farm_total = cursor.fetchone()[0]
+        now = datetime.datetime.now()
+        cursor.execute(
+            """INSERT INTO livestock_history (db_farm, `year`, `month`, head_count)
+               VALUES (%s, %s, %s, %s)
+               ON DUPLICATE KEY UPDATE head_count = VALUES(head_count)""",
+            (db_farm, now.year, now.month, farm_total),
+        )
+
+        cursor.execute(
+            "INSERT INTO activity_log (db_farm, title, description) VALUES (%s, %s, %s)",
+            (db_farm, f"Herd updated: {herd_name}", f"Head count set to {head_count}"),
+        )
+        conn.commit()
+
+    except MySQLIntegrityError:
+        conn.rollback()
+        return jsonify({"success": False, "message": "A herd with that name already exists."}), 409
+    finally:
+        cursor.close()
+        conn.close()
+
+    return jsonify({"success": True, "message": f'Herd "{herd_name}" updated.'})
+
+# ── DELETE /api/herds/<id> ────────────────────────────────────────────────────
+@app.route("/api/herds/<int:herd_id>", methods=["DELETE"])
+def delete_herd(herd_id):
+    """Delete a herd. Animals belonging to it are unassigned, not deleted."""
+    farm_name = request.args.get("farm_name", "").strip()
+    if not farm_name:
+        return jsonify({"success": False, "message": "farm_name is required."}), 400
+
+    conn   = get_db()
+    cursor = conn.cursor()
+    try:
+        db_farm = get_farm_id(cursor, farm_name)
+        if not db_farm:
+            return jsonify({"success": False, "message": "Farm not found."}), 404
+
+        cursor.execute(
+            "SELECT herd_name FROM herds WHERE id = %s AND db_farm = %s",
+            (herd_id, db_farm),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "Herd not found."}), 404
+        herd_name = row[0]
+
+        # Unassign animals in this herd rather than deleting them
+        cursor.execute(
+            "UPDATE animals SET herd_id = NULL WHERE herd_id = %s AND db_farm = %s",
+            (herd_id, db_farm),
+        )
+        cursor.execute("DELETE FROM herds WHERE id = %s", (herd_id,))
+
+        # Keep the trend chart's current-month snapshot in sync
+        cursor.execute(
+            "SELECT COALESCE(SUM(head_count), 0) FROM herds WHERE db_farm = %s",
+            (db_farm,),
+        )
+        farm_total = cursor.fetchone()[0]
+        now = datetime.datetime.now()
+        cursor.execute(
+            """INSERT INTO livestock_history (db_farm, `year`, `month`, head_count)
+               VALUES (%s, %s, %s, %s)
+               ON DUPLICATE KEY UPDATE head_count = VALUES(head_count)""",
+            (db_farm, now.year, now.month, farm_total),
+        )
+
+        cursor.execute(
+            "INSERT INTO activity_log (db_farm, title, description) VALUES (%s, %s, %s)",
+            (db_farm, f"Herd deleted: {herd_name}", "Animals in this herd were unassigned."),
+        )
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
+
+    return jsonify({"success": True, "message": f'Herd "{herd_name}" deleted.'})
+
 # ── GET /api/breeds ────────────────────────────────────────────────────────────
 @app.route("/api/breeds")
 def get_breeds():
@@ -748,6 +869,89 @@ def add_breed():
         "breed_name": breed_name,
     }), 201
 
+# ── PUT /api/breeds/<id> ────────────────────────────────────────────────────
+@app.route("/api/breeds/<int:breed_id>", methods=["PUT"])
+def update_breed(breed_id):
+    """Rename a breed. Body: { farm_name, breed_name }. Animals referencing the
+    old name (matched by string, not FK) are updated to the new name too."""
+    data       = request.get_json(silent=True) or {}
+    farm_name  = data.get("farm_name",  "").strip()
+    breed_name = data.get("breed_name", "").strip()
+
+    if not farm_name or not breed_name:
+        return jsonify({"success": False,
+                        "message": "Farm name and breed name are required."}), 400
+
+    conn   = get_db()
+    cursor = conn.cursor()
+    try:
+        db_farm = get_farm_id(cursor, farm_name)
+        if not db_farm:
+            return jsonify({"success": False, "message": "Farm not found."}), 404
+
+        cursor.execute(
+            "SELECT breed_name FROM breeds WHERE id = %s AND db_farm = %s",
+            (breed_id, db_farm),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "Breed not found."}), 404
+        old_name = row[0]
+
+        cursor.execute(
+            "UPDATE breeds SET breed_name = %s WHERE id = %s",
+            (breed_name, breed_id),
+        )
+        # breed is matched by name on animals, not a foreign key — keep them in sync
+        cursor.execute(
+            "UPDATE animals SET breed = %s WHERE breed = %s AND db_farm = %s",
+            (breed_name, old_name, db_farm),
+        )
+        conn.commit()
+
+    except MySQLIntegrityError:
+        conn.rollback()
+        return jsonify({"success": False,
+                        "message": f'"{breed_name}" is already in your breed list.'}), 409
+    finally:
+        cursor.close()
+        conn.close()
+
+    return jsonify({"success": True, "message": f'Breed updated to "{breed_name}".'})
+
+# ── DELETE /api/breeds/<id> ───────────────────────────────────────────────────
+@app.route("/api/breeds/<int:breed_id>", methods=["DELETE"])
+def delete_breed(breed_id):
+    """Delete a breed from the farm's breed list. Animals already tagged with
+    this breed keep their breed text (it's a free-text field, not a FK)."""
+    farm_name = request.args.get("farm_name", "").strip()
+    if not farm_name:
+        return jsonify({"success": False, "message": "farm_name is required."}), 400
+
+    conn   = get_db()
+    cursor = conn.cursor()
+    try:
+        db_farm = get_farm_id(cursor, farm_name)
+        if not db_farm:
+            return jsonify({"success": False, "message": "Farm not found."}), 404
+
+        cursor.execute(
+            "SELECT breed_name FROM breeds WHERE id = %s AND db_farm = %s",
+            (breed_id, db_farm),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "Breed not found."}), 404
+        breed_name = row[0]
+
+        cursor.execute("DELETE FROM breeds WHERE id = %s", (breed_id,))
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
+
+    return jsonify({"success": True, "message": f'Breed "{breed_name}" deleted.'})
+
 # ── GET /api/animals ──────────────────────────────────────────────────────────
 @app.route("/api/animals")
 def get_animals():
@@ -811,7 +1015,7 @@ def get_animals():
         # Paginated results
         cursor.execute(
             f"""SELECT a.id, a.tag_number, a.gender, a.breed, a.date_of_birth,
-                       a.weight, h.herd_name, a.notes
+                       a.weight, h.herd_name, a.notes, a.herd_id
                 FROM animals a
                 LEFT JOIN herds h ON a.herd_id = h.id
                 WHERE {where}
@@ -865,6 +1069,7 @@ def get_animals():
             "weight":        float(r[5]) if r[5] is not None else None,
             "herd_name":     r[6] or "—",
             "notes":         r[7] or "",
+            "herd_id":       r[8],
         }
         for r in rows
     ]
@@ -969,11 +1174,179 @@ def add_animal():
                     "message": f"Animal #{tag_number} added successfully.",
                     "id": animal_id}), 201
 
+# ── PUT /api/animals/<id> ─────────────────────────────────────────────────────
+@app.route("/api/animals/<int:animal_id>", methods=["PUT"])
+def update_animal(animal_id):
+    """
+    Edits an existing animal's fields.
+    Body: { farm_name, tag_number, gender, breed, date_of_birth, weight, herd_id, notes }
+    If herd_id changes, the old herd's head_count is decremented and the new
+    herd's head_count is incremented (mirrors the logic in add_animal).
+    """
+    data       = request.get_json(silent=True) or {}
+    farm_name  = data.get("farm_name",    "").strip()
+    tag_number = data.get("tag_number",   "").strip()
+    gender     = data.get("gender",       "").strip()
+    breed      = data.get("breed",        "").strip()
+    dob        = data.get("date_of_birth","")
+    weight     = data.get("weight",       None)
+    herd_id    = data.get("herd_id",      None)
+    notes      = data.get("notes",        "").strip()
+
+    if not all([farm_name, tag_number, gender, dob]):
+        return jsonify({"success": False,
+                        "message": "Tag number, gender, and date of birth are required."}), 400
+    if gender not in ("Male", "Female"):
+        return jsonify({"success": False, "message": "Gender must be Male or Female."}), 400
+
+    try:
+        weight = float(weight) if weight not in (None, "", 0) else None
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "Weight must be a number."}), 400
+
+    try:
+        new_herd_id = int(herd_id) if herd_id else None
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "Invalid herd."}), 400
+
+    conn   = get_db()
+    cursor = conn.cursor()
+    try:
+        db_farm = get_farm_id(cursor, farm_name)
+        if not db_farm:
+            return jsonify({"success": False, "message": "Farm not found."}), 404
+
+        # Confirm the animal belongs to this farm and grab its current herd
+        cursor.execute(
+            "SELECT herd_id FROM animals WHERE id = %s AND db_farm = %s",
+            (animal_id, db_farm),
+        )
+        existing = cursor.fetchone()
+        if not existing:
+            return jsonify({"success": False, "message": "Animal not found."}), 404
+        old_herd_id = existing[0]
+
+        # Verify the new herd (if any) belongs to this farm
+        if new_herd_id:
+            cursor.execute(
+                "SELECT id FROM herds WHERE id = %s AND db_farm = %s",
+                (new_herd_id, db_farm),
+            )
+            if not cursor.fetchone():
+                return jsonify({"success": False, "message": "Invalid herd."}), 400
+
+        cursor.execute(
+            """UPDATE animals
+               SET tag_number = %s, gender = %s, breed = %s, date_of_birth = %s,
+                   weight = %s, herd_id = %s, notes = %s
+               WHERE id = %s AND db_farm = %s""",
+            (tag_number, gender, breed or None, dob, weight, new_herd_id, notes or None,
+             animal_id, db_farm),
+        )
+
+        # Keep herd head counts in sync if the herd assignment changed
+        if old_herd_id != new_herd_id:
+            if old_herd_id:
+                cursor.execute(
+                    "UPDATE herds SET head_count = GREATEST(head_count - 1, 0) WHERE id = %s",
+                    (old_herd_id,),
+                )
+            if new_herd_id:
+                cursor.execute(
+                    "UPDATE herds SET head_count = head_count + 1 WHERE id = %s",
+                    (new_herd_id,),
+                )
+
+        cursor.execute(
+            "INSERT INTO activity_log (db_farm, title, description) VALUES (%s, %s, %s)",
+            (db_farm, f"Animal #{tag_number} updated", "Record details edited"),
+        )
+
+        conn.commit()
+
+    except MySQLIntegrityError as exc:
+        conn.rollback()
+        if "uq_farm_tag" in str(exc) or "tag_number" in str(exc):
+            return jsonify({"success": False,
+                            "message": f'Tag "{tag_number}" is already in use on this farm.'}), 409
+        return jsonify({"success": False, "message": "Failed to update animal."}), 409
+    finally:
+        cursor.close()
+        conn.close()
+
+    return jsonify({"success": True,
+                    "message": f"Animal #{tag_number} updated successfully."})
+
+# ── DELETE /api/animals/<id> ──────────────────────────────────────────────────
+@app.route("/api/animals/<int:animal_id>", methods=["DELETE"])
+def delete_animal(animal_id):
+    """
+    Removes an animal from the farm.
+    Query string: ?farm_name=...  (required, to scope/verify ownership)
+    Decrements the animal's herd head_count (if assigned) and re-snapshots
+    the farm total into livestock_history so the dashboard trend stays correct.
+    """
+    farm_name = request.args.get("farm_name", "").strip()
+    if not farm_name:
+        return jsonify({"success": False, "message": "farm_name is required."}), 400
+
+    conn   = get_db()
+    cursor = conn.cursor()
+    try:
+        db_farm = get_farm_id(cursor, farm_name)
+        if not db_farm:
+            return jsonify({"success": False, "message": "Farm not found."}), 404
+
+        cursor.execute(
+            "SELECT herd_id, tag_number FROM animals WHERE id = %s AND db_farm = %s",
+            (animal_id, db_farm),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "Animal not found."}), 404
+        herd_id, tag_number = row
+
+        cursor.execute(
+            "DELETE FROM animals WHERE id = %s AND db_farm = %s",
+            (animal_id, db_farm),
+        )
+
+        if herd_id:
+            cursor.execute(
+                "UPDATE herds SET head_count = GREATEST(head_count - 1, 0) WHERE id = %s",
+                (herd_id,),
+            )
+
+        # Keep the trend chart's current-month snapshot in sync
+        cursor.execute(
+            "SELECT COALESCE(SUM(head_count), 0) FROM herds WHERE db_farm = %s",
+            (db_farm,),
+        )
+        farm_total = cursor.fetchone()[0]
+        now = datetime.datetime.now()
+        cursor.execute(
+            """INSERT INTO livestock_history (db_farm, `year`, `month`, head_count)
+               VALUES (%s, %s, %s, %s)
+               ON DUPLICATE KEY UPDATE head_count = VALUES(head_count)""",
+            (db_farm, now.year, now.month, farm_total),
+        )
+
+        cursor.execute(
+            "INSERT INTO activity_log (db_farm, title, description) VALUES (%s, %s, %s)",
+            (db_farm, f"Animal #{tag_number} removed", "Record deleted"),
+        )
+
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
+
+    return jsonify({"success": True, "message": f"Animal #{tag_number} deleted."})
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print()
     print("🌱  MyFarm (MySQL backend) — http://localhost:" + str(PORT))
     print("    ⚠️  Open the URL above in your browser — not the HTML file directly.")
-    print("    Serving static files from:", FRONTEND_DIR)
     print()
     app.run(debug=True, port=PORT)
